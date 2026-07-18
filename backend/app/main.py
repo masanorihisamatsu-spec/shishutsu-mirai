@@ -1,0 +1,33 @@
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
+
+from app.api.routes.imports import router as imports_router
+from app.api.routes.ocr import router as ocr_router
+from app.api.routes.transactions import router as transactions_router
+from app.core.config import settings
+from app.db.session import engine
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    with engine.connect() as connection:
+        connection.execute(text("SELECT 1"))
+    yield
+
+
+app = FastAPI(title=settings.app_name, lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(transactions_router)
+app.include_router(ocr_router)
+app.include_router(imports_router)

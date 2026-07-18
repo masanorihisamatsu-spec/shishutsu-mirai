@@ -1,0 +1,46 @@
+# ==== Node.js / Next.js (frontend) ====
+node_modules/
+.pnpm-store/
+.next/
+out/
+build/
+*.tsbuildinfo
+next-env.d.ts
+
+# ==== Python / FastAPI (backend) ====
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ==== Database ====
+database/*.db
+database/*.db-journal
+database/*.sqlite3
+
+# ==== OCR で保存したレシート画像 ====
+backend/uploads/
+
+# ==== Environment variables ====
+.env
+.env.local
+.env.*.local
+
+# ==== Logs ====
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# ==== Editors / OS ====
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ==== Docker ====
+docker-compose.override.yml

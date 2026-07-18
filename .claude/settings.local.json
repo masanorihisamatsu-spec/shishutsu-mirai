@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm -v)",
+      "Bash(docker --version)",
+      "PowerShell(node -v)",
+      "PowerShell(pnpm -v)",
+      "PowerShell(python --version)",
+      "PowerShell(docker --version)",
+      "Bash(cd \"/c/Users/mitsu/OneDrive/デスクトップ/支出みらい\" && find . -type f -not -path \"*/node_modules/*\" -not -path \"*/.claude/*\" -not -path \"*/.git/*\" | sort)",
+      "mcp__visualize__read_me",
+      "mcp__visualize__show_widget",
+      "Bash(cd \"/c/Users/mitsu/OneDrive/デスクトップ/支出みらい\" && rm frontend/src/components/home/fab-menu.tsx && echo \"removed old fab-menu.tsx from home/\")",
+      "Bash(rm frontend/src/lib/categories.ts)",
+      "Bash(grep -rn \"lib/categories\" frontend/src)",
+      "PowerShell(Get-PSDrive C | Select-Object Used,Free; Write-Output \"---\"; [math]::Round\\(\\(Get-PSDrive C\\).Free/1GB,2\\))",
+      "PowerShell(-join \\(\\(48..57\\)+\\(97..102\\) | Get-Random -Count 12 | ForEach-Object {[char]$_}\\))",
+      "Bash(cd \"/c/Users/mitsu/OneDrive/デスクトップ/支出みらい\" && rm -f backend/alembic/versions/.gitkeep && ls backend/alembic/versions/)",
+      "PowerShell([math]::Round\\(\\(Get-PSDrive C\\).Free/1MB,2\\))",
+      "Bash(npm -v)",
+      "Bash(docker compose *)",
+      "Bash(powershell.exe -Command \"Get-Process 'Docker Desktop' -ErrorAction SilentlyContinue\")",
+      "Bash(powershell.exe -Command \"Start-Process 'C:\\\\Program Files\\\\Docker\\\\Docker\\\\Docker Desktop.exe'\")",
+      "Bash(docker info *)",
+      "Bash(break)",
+      "Bash(ls \"/c/Users/mitsu/OneDrive/デスクトープ\" 2>&1 || echo \"not found \\(good, confirms typo dir\\)\")",
+      "Bash(rm -rf \"/c/Users/mitsu/OneDrive/デスクトープ\" && echo \"removed typo dir\")",
+      "Bash(docker builder *)",
+      "Bash(docker system *)",
+      "Bash(docker image *)",
+      "Bash(xxd)",
+      "Bash(ls \"/c/Users/mitsu/OneDrive/\" | grep -i \"支出\" )",
+      "Bash(rm -rf \"/c/Users/mitsu/OneDrive/デスクトープ\" && echo removed)"
+    ]
+  }
+}

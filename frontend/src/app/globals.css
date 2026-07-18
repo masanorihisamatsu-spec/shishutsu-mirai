@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* 背景: オフホワイト */
+    --background: 36 38% 97%;
+    /* 文字: ダークグレー */
+    --foreground: 25 12% 20%;
+
+    /* カード: ホワイト */
+    --card: 0 0% 100%;
+    --card-foreground: 25 12% 20%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 25 12% 20%;
+
+    /* アクセント: くすみピンク */
+    --primary: 350 40% 55%;
+    --primary-foreground: 0 0% 100%;
+
+    /* 補助色: グレージュ */
+    --secondary: 32 16% 90%;
+    --secondary-foreground: 25 12% 25%;
+
+    --muted: 33 20% 94%;
+    --muted-foreground: 25 8% 45%;
+
+    /* ホバー等の淡いくすみピンク */
+    --accent: 350 45% 94%;
+    --accent-foreground: 350 40% 40%;
+
+    /* 成功: セージグリーン */
+    --success: 104 18% 46%;
+    --success-foreground: 0 0% 100%;
+
+    --destructive: 8 55% 54%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 32 16% 87%;
+    --input: 32 16% 87%;
+    --ring: 350 40% 55%;
+
+    /* 余白を広く・やさしい印象のため大きめの角丸を基準にする */
+    --radius: 1rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "palt" 1;
+  }
+}
