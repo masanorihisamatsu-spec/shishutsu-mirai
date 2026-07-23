@@ -1,135 +1,130 @@
 # 支出管理みらい
 
-AI支出管理アプリ「支出管理みらい」。本リポジトリは **Sprint 0（環境構築）** の成果物です。
+AIを活用した支出管理アプリです。
 
-Sprint 0 のスコープは環境構築のみです。画面・API・ダミーデータは含まれません。
+レシートOCR・CSV/PDF取込・AI分析・AIチャットにより、
+日々の支出を簡単に記録・分析できます。
 
-## 技術構成
+---
 
-| 領域 | 技術 |
-| --- | --- |
-| Frontend | Next.js 15 (App Router) / TypeScript / Tailwind CSS / shadcn/ui / React Hook Form / Zod / TanStack Query / Recharts |
-| Backend | FastAPI / SQLAlchemy / Alembic / Pydantic |
-| Database | SQLite |
-| Development | Docker / Docker Compose |
-| Package Manager | pnpm |
+## 主な機能
 
-## ディレクトリ構成
+### 取引管理
 
-```
-支出管理みらい/
-├── frontend/   # Next.js アプリケーションコード
-├── backend/    # FastAPI アプリケーションコード
-├── database/   # SQLite の実データ（Git 管理外）
-├── docs/       # 設計ドキュメント
-├── docker/     # 各サービスの Dockerfile
-├── docker-compose.yml
-├── .env.example
-├── .gitignore
-└── CLAUDE.md
-```
+- 支出の登録・編集・削除
+- カテゴリ管理
+- 支払方法管理
+- 重複登録防止
 
-詳細な構成方針は [docs/architecture.md](./docs/architecture.md)、AI コーディングアシスタント向けの規約は [CLAUDE.md](./CLAUDE.md) を参照してください。
+### レシートOCR
 
-## セットアップ
+- レシート画像から自動入力
+- 店舗名・日付・金額を抽出
+- 回転画像にも対応
 
-前提: Docker Desktop（Docker Compose v2 / BuildKit 有効）がインストールされていること。
+### 明細インポート
 
-```bash
-docker compose up
-```
+対応形式
 
-これだけで以下が起動します。
+- PayPay CSV
+- PayPay PDF
+- 楽天カードCSV
+- JCB CSV
+- Excel家計簿
 
-- Frontend: http://localhost:3000
-- Backend: http://localhost:8000 （Swagger UI: http://localhost:8000/docs）
+重複チェックを行い、安全に取り込みできます。
 
-`.env` は必須ではありません。ポートや接続先を変更したい場合のみ、`.env.example` をコピーして `.env` を作成してください。
+### レポート
 
-```bash
-cp .env.example .env
-```
+- 月別推移
+- カテゴリ別円グラフ
+- 支出ランキング
+- 集計表示
 
-## 起動確認方法
+### AI分析
 
-1. コンテナが起動していることを確認する
+AIが自動で
 
-   ```bash
-   docker compose ps
-   ```
+- 使い過ぎカテゴリ
+- 支出増加
+- コンビニ利用
+- 平均利用額
 
-   `frontend` `backend` の 2 サービスが `running` になっていること。
+などを分析します。
 
-2. Frontend の起動確認
+### AIチャット
 
-   ブラウザで http://localhost:3000 を開き、`支出管理みらい — Sprint 0` の文字列が表示されることを確認する。
+例えば
 
-   ```bash
-   curl -I http://localhost:3000
-   ```
+- 食費はいくら？
+- コンビニはいくら？
+- Amazonはいくら使った？
+- 今月使いすぎは？
 
-   `HTTP/1.1 200 OK` が返ればOK。
+など自然な日本語で質問できます。
 
-3. Backend の起動確認
+---
 
-   ブラウザで http://localhost:8000/docs を開き、Swagger UI が表示されることを確認する（Sprint 0 ではエンドポイント未実装のためスキーマは空）。
+# 使用技術
 
-   ```bash
-   curl -I http://localhost:8000/docs
-   ```
+## Frontend
 
-4. SQLite 接続確認
+- Next.js 15
+- TypeScript
+- Tailwind CSS
+- TanStack Query
+- Recharts
 
-   Backend はアプリ起動時（lifespan）に SQLite へ接続確認（`SELECT 1`）を行う。接続に失敗するとコンテナが起動しないため、`docker compose ps` で `backend` が起動していれば接続成功とみなせる。また初回起動後、以下のファイルが生成される。
+## Backend
 
-   ```bash
-   ls database/app.db
-   ```
+- FastAPI
+- SQLAlchemy
+- Alembic
+- Pydantic
 
-5. 終了
+## Database
 
-   ```bash
-   docker compose down
-   ```
+- SQLite
 
-## 環境変数
+## OCR
 
-| 変数名 | 用途 | デフォルト |
-| --- | --- | --- |
-| `DATABASE_URL` | Backend が接続する SQLite の接続文字列 | `sqlite:///./database/app.db` |
-| `BACKEND_PORT` | Backend の公開ポート | `8000` |
-| `NEXT_PUBLIC_API_URL` | Frontend から見た Backend の URL | `http://localhost:8000` |
-| `FRONTEND_PORT` | Frontend の公開ポート | `3000` |
+- Tesseract OCR
 
-## データベース / マイグレーション
+## 開発環境
 
-SQLite のファイルは `database/` にマウントされます（詳細は [database/README.md](./database/README.md)）。マイグレーションは Alembic で管理します（`backend/alembic`）。モデル追加後は以下を実行してください。
+- Docker
+- Docker Compose
 
-```bash
-docker compose exec backend alembic revision --autogenerate -m "message"
-docker compose exec backend alembic upgrade head
-```
+---
 
-## ローカル開発（Docker を使わない場合）
+# 今後追加予定
 
-```bash
-# Frontend
-cd frontend
-pnpm install
-pnpm dev
+- AI OCR
+- LLMによるAIチャット
+- 銀行口座連携
+- クレジットカード自動連携
+- 家計予算管理
+- 支出予測
+- 資産管理
 
-# Backend
-cd backend
-python -m venv .venv
-.venv/Scripts/activate  # Windows
-pip install -r requirements.txt
-uvicorn app.main:app --reload
-```
+---
 
-## Sprint 0 でやらないこと
+# スクリーンショット
 
-- 画面（UI コンポーネント）の実装
-- API エンドポイントの実装
-- ダミーデータ・シードデータの投入
+（今後追加予定）
 
-これらは Sprint 1 以降で着手します。
+---
+
+# 開発者
+
+久松 正倫
+
+GitHub
+
+https://github.com/masanorihisamatsu-spec
+
+---
+
+# Version
+
+Version 1.0
