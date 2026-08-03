@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
+from app.api.routes.budgets import router as budgets_router
 from app.api.routes.imports import router as imports_router
 from app.api.routes.ocr import router as ocr_router
 from app.api.routes.transactions import router as transactions_router
@@ -33,5 +34,6 @@ app.add_middleware(
 )
 
 app.include_router(transactions_router)
+app.include_router(budgets_router)
 app.include_router(ocr_router)
 app.include_router(imports_router)

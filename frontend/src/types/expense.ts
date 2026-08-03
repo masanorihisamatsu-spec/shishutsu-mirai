@@ -13,6 +13,11 @@ export interface MonthlyTotal {
   amount: number;
 }
 
+export interface Budget {
+  category: string;
+  amount: number;
+}
+
 export interface Transaction {
   id: string;
   storeName: string;

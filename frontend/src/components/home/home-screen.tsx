@@ -66,7 +66,7 @@ export function HomeScreen() {
 
         <TodayExpenseCard amount={todayExpense} />
 
-        <MonthlyExpenseCard amount={monthlyExpense} initialBudget={null} />
+        <MonthlyExpenseCard amount={monthlyExpense} />
 
         <CategoryBreakdownCard data={categoryBreakdown} />
 

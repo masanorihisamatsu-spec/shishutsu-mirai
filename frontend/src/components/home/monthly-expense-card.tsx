@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { PiggyBank } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Pencil, PiggyBank } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,34 +16,79 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Toast, type ToastState } from "@/components/ui/toast";
+import { CATEGORY_OPTIONS } from "@/data/expense-options-dummy-data";
+import { useBudgets } from "@/hooks/use-budgets";
+import { useSetBudget } from "@/hooks/use-set-budget";
+import { ApiError } from "@/lib/api-client";
 import { formatCurrency } from "@/lib/format";
 
 interface MonthlyExpenseCardProps {
   amount: number;
-  /** null の場合は「予算はまだ設定されていません」の案内とCTAを表示する */
-  initialBudget: number | null;
 }
 
-export function MonthlyExpenseCard({ amount, initialBudget }: MonthlyExpenseCardProps) {
-  const [budget, setBudget] = useState<number | null>(initialBudget);
-  const [open, setOpen] = useState(false);
-  const [inputValue, setInputValue] = useState("");
+export function MonthlyExpenseCard({ amount }: MonthlyExpenseCardProps) {
+  const { data: budgets } = useBudgets();
+  const setBudget = useSetBudget();
 
-  const remaining = budget !== null ? budget - amount : null;
-  const usageRate =
-    budget !== null && budget > 0 ? Math.min(Math.round((amount / budget) * 100), 100) : null;
+  const [open, setOpen] = useState(false);
+  const [inputValues, setInputValues] = useState<Record<string, string>>({});
+  const [toast, setToast] = useState<ToastState | null>(null);
+
+  const budgetByCategory = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const budget of budgets ?? []) {
+      map.set(budget.category, budget.amount);
+    }
+    return map;
+  }, [budgets]);
+
+  const totalBudget = useMemo(
+    () => Array.from(budgetByCategory.values()).reduce((sum, value) => sum + value, 0),
+    [budgetByCategory]
+  );
+
+  const hasBudget = totalBudget > 0;
+  const remaining = hasBudget ? totalBudget - amount : null;
+  const usageRate = hasBudget ? Math.min(Math.round((amount / totalBudget) * 100), 100) : null;
 
   const handleDialogChange = (next: boolean) => {
     setOpen(next);
-    if (!next) setInputValue("");
+    if (next) {
+      const initial: Record<string, string> = {};
+      for (const category of CATEGORY_OPTIONS) {
+        const value = budgetByCategory.get(category);
+        initial[category] = value ? String(value) : "";
+      }
+      setInputValues(initial);
+    }
   };
 
-  const handleSave = () => {
-    const parsed = Number(inputValue.replaceAll(",", ""));
-    if (!Number.isFinite(parsed) || parsed <= 0) return;
-    setBudget(parsed);
-    setInputValue("");
-    setOpen(false);
+  const handleSave = async () => {
+    const changedCategories = CATEGORY_OPTIONS.filter((category) => {
+      const parsed = Number(inputValues[category]);
+      return (
+        inputValues[category] &&
+        Number.isFinite(parsed) &&
+        parsed > 0 &&
+        parsed !== budgetByCategory.get(category)
+      );
+    });
+
+    try {
+      await Promise.all(
+        changedCategories.map((category) =>
+          setBudget.mutateAsync({ category, amount: Number(inputValues[category]) })
+        )
+      );
+      setOpen(false);
+    } catch (error) {
+      setToast({
+        message:
+          error instanceof ApiError ? error.message : "予算の保存に失敗しました。もう一度お試しください。",
+        variant: "error",
+      });
+    }
   };
 
   return (
@@ -57,60 +102,89 @@ export function MonthlyExpenseCard({ amount, initialBudget }: MonthlyExpenseCard
       <CardContent className="space-y-4">
         <p className="text-3xl font-bold tracking-tight text-foreground">{formatCurrency(amount)}</p>
 
-        {budget === null ? (
-          <div className="space-y-3 rounded-2xl bg-muted/70 p-4">
-            <p className="text-sm font-medium text-muted-foreground">予算はまだ設定されていません</p>
-
-            <Dialog open={open} onOpenChange={handleDialogChange}>
+        <Dialog open={open} onOpenChange={handleDialogChange}>
+          {!hasBudget ? (
+            <div className="space-y-3 rounded-2xl bg-muted/70 p-4">
+              <p className="text-sm font-medium text-muted-foreground">予算はまだ設定されていません</p>
               <DialogTrigger asChild>
                 <Button variant="secondary" size="sm" className="w-full">
                   予算を設定する
                 </Button>
               </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>今月の予算を設定</DialogTitle>
-                  <DialogDescription>今月使う金額の目安を入力してください</DialogDescription>
-                </DialogHeader>
-
-                <Input
-                  type="number"
-                  inputMode="numeric"
-                  min={0}
-                  placeholder="例: 50000"
-                  value={inputValue}
-                  onChange={(event) => setInputValue(event.target.value)}
-                  autoFocus
+            </div>
+          ) : (
+            <>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-primary transition-all"
+                  style={{ width: `${usageRate ?? 0}%` }}
                 />
+              </div>
+              <div className="flex items-center justify-between text-sm text-muted-foreground">
+                <span>予算 {formatCurrency(totalBudget)}</span>
+                <span className="flex items-center gap-1">
+                  <span className="font-medium text-foreground">
+                    残り {formatCurrency(remaining ?? 0)}
+                  </span>
+                  <DialogTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-7 text-muted-foreground"
+                      aria-label="予算を編集"
+                    >
+                      <Pencil className="size-3.5" />
+                    </Button>
+                  </DialogTrigger>
+                </span>
+              </div>
+            </>
+          )}
 
-                <DialogFooter>
-                  <DialogClose asChild>
-                    <Button variant="ghost">キャンセル</Button>
-                  </DialogClose>
-                  <Button onClick={handleSave} disabled={!inputValue}>
-                    保存する
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          </div>
-        ) : (
-          <>
-            <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-              <div
-                className="h-full rounded-full bg-primary transition-all"
-                style={{ width: `${usageRate ?? 0}%` }}
-              />
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>カテゴリ別の月間予算を設定</DialogTitle>
+              <DialogDescription>カテゴリごとに今月使う金額の目安を入力してください</DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3">
+              {CATEGORY_OPTIONS.map((category) => (
+                <div key={category} className="flex items-center gap-3">
+                  <label
+                    htmlFor={`budget-${category}`}
+                    className="w-20 shrink-0 text-sm text-foreground"
+                  >
+                    {category}
+                  </label>
+                  <Input
+                    id={`budget-${category}`}
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    placeholder="例: 50000"
+                    value={inputValues[category] ?? ""}
+                    onChange={(event) =>
+                      setInputValues((prev) => ({ ...prev, [category]: event.target.value }))
+                    }
+                  />
+                </div>
+              ))}
             </div>
-            <div className="flex items-center justify-between text-sm text-muted-foreground">
-              <span>予算 {formatCurrency(budget)}</span>
-              <span className="font-medium text-foreground">
-                残り {formatCurrency(remaining ?? 0)}
-              </span>
-            </div>
-          </>
-        )}
+
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="ghost">キャンセル</Button>
+              </DialogClose>
+              <Button onClick={handleSave} disabled={setBudget.isPending}>
+                {setBudget.isPending ? "保存中..." : "保存する"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </CardContent>
+
+      {toast && <Toast {...toast} onDismiss={() => setToast(null)} />}
     </Card>
   );
 }
