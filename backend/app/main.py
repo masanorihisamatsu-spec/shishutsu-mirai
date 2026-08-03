@@ -8,11 +8,15 @@ from app.api.routes.imports import router as imports_router
 from app.api.routes.ocr import router as ocr_router
 from app.api.routes.transactions import router as transactions_router
 from app.core.config import settings
+from app.db.migrate import run_migrations
 from app.db.session import engine
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Render等、対話的にマイグレーションコマンドを実行できない環境でも
+    # テーブルが自動作成されるよう、起動時に alembic upgrade head 相当を実行する。
+    run_migrations()
     with engine.connect() as connection:
         connection.execute(text("SELECT 1"))
     yield
