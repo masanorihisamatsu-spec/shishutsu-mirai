@@ -11,8 +11,17 @@ export function getMonthKeyFromDate(isoDate: string): string {
   return isoDate.slice(0, 7);
 }
 
+/** 対象日時を "2026-07-16" 形式で返す（ローカルタイム基準） */
+export function getTodayKey(date: Date = new Date()): string {
+  return `${getMonthKey(date)}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 export function filterByMonth(transactions: Transaction[], monthKey: string): Transaction[] {
   return transactions.filter((transaction) => getMonthKeyFromDate(transaction.date) === monthKey);
+}
+
+export function filterByDate(transactions: Transaction[], dateKey: string): Transaction[] {
+  return transactions.filter((transaction) => transaction.date === dateKey);
 }
 
 export function sumAmount(transactions: Transaction[]): number {
