@@ -40,6 +40,9 @@ export const TransactionCard = memo(function TransactionCard({
                 <span className="text-xs text-muted-foreground">{transaction.paymentMethod}</span>
                 <span className="text-xs text-muted-foreground">{formatDate(transaction.date)}</span>
               </div>
+              {transaction.memo && (
+                <p className="mt-1 truncate text-xs text-muted-foreground">{transaction.memo}</p>
+              )}
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
