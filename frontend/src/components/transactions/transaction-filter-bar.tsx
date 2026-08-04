@@ -7,7 +7,7 @@ import { SearchBar } from "@/components/common/search-bar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { CATEGORY_OPTIONS } from "@/data/expense-options-dummy-data";
+import { useCategories } from "@/hooks/use-categories";
 import { formatMonthLabel } from "@/lib/format";
 
 import { EMPTY_TRANSACTION_FILTERS, type TransactionFilters } from "./filter-transactions";
@@ -19,6 +19,8 @@ interface TransactionFilterBarProps {
 
 export function TransactionFilterBar({ filters, onFiltersChange }: TransactionFilterBarProps) {
   const [panelOpen, setPanelOpen] = useState(false);
+  const { data: categories } = useCategories();
+  const categoryNames = (categories ?? []).map((category) => category.name);
 
   const toggleCategory = (category: string) => {
     const next = filters.categories.includes(category)
@@ -96,7 +98,7 @@ export function TransactionFilterBar({ filters, onFiltersChange }: TransactionFi
           <div className="space-y-1.5">
             <p className="text-xs font-medium text-muted-foreground">カテゴリ（複数選択可）</p>
             <div className="flex flex-wrap gap-2">
-              {CATEGORY_OPTIONS.map((item) => {
+              {categoryNames.map((item) => {
                 const checked = filters.categories.includes(item);
                 return (
                   <button

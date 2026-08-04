@@ -8,6 +8,7 @@ import { ErrorState } from "@/components/common/error-state";
 import { LoadingState } from "@/components/common/loading-state";
 import { Button } from "@/components/ui/button";
 import { CHAT_SUGGESTED_QUESTIONS } from "@/data/chat-suggested-questions";
+import { useCategories } from "@/hooks/use-categories";
 import { useTransactions } from "@/hooks/use-transactions";
 import { generateAnswer, parseIntent } from "@/lib/chat";
 import type { ChatMessage as ChatMessageType } from "@/types/chat";
@@ -33,6 +34,7 @@ function saveHistory(messages: ChatMessageType[]): void {
 export function ChatScreen() {
   const router = useRouter();
   const { data: transactions, isPending, isError, error, refetch } = useTransactions();
+  const { data: categories } = useCategories();
   const [messages, setMessages] = useState<ChatMessageType[]>([]);
   const hasLoadedHistoryRef = useRef(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -61,7 +63,8 @@ export function ChatScreen() {
       createdAt: new Date().toISOString(),
     };
 
-    const intent = parseIntent(text, transactions ?? []);
+    const categoryNames = (categories ?? []).map((category) => category.name);
+    const intent = parseIntent(text, transactions ?? [], categoryNames);
     const answerText = generateAnswer(intent, transactions ?? []);
 
     const assistantMessage: ChatMessageType = {

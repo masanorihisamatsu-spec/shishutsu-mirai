@@ -1,8 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type FormEvent } from "react";
-import { Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { Package, Trash2, Wallet } from "lucide-react";
 
 import { BackHeader } from "@/components/common/back-header";
 import { Button } from "@/components/ui/button";
@@ -19,9 +19,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Toast, type ToastState } from "@/components/ui/toast";
-import { CATEGORY_OPTIONS, PAYMENT_METHOD_OPTIONS } from "@/data/expense-options-dummy-data";
+import { useCategories } from "@/hooks/use-categories";
 import { useCreateTransaction } from "@/hooks/use-create-transaction";
 import { useDeleteTransaction } from "@/hooks/use-delete-transaction";
+import { usePaymentMethods } from "@/hooks/use-payment-methods";
 import { useScanReceipt } from "@/hooks/use-scan-receipt";
 import { useUpdateTransaction } from "@/hooks/use-update-transaction";
 import { ApiError } from "@/lib/api-client";
@@ -32,16 +33,6 @@ import type { TransactionFormValues } from "@/types/transaction-form";
 import { FormField } from "./form-field";
 import { OptionTileGrid } from "./option-tile-grid";
 import { ReceiptImagePicker } from "./receipt-image-picker";
-
-const CATEGORY_TILE_OPTIONS = CATEGORY_OPTIONS.map((value) => ({
-  value,
-  icon: CATEGORY_ICONS[value],
-}));
-
-const PAYMENT_METHOD_TILE_OPTIONS = PAYMENT_METHOD_OPTIONS.map((value) => ({
-  value,
-  icon: PAYMENT_METHOD_ICONS[value],
-}));
 
 interface FormErrors {
   date?: string;
@@ -62,6 +53,26 @@ export function TransactionForm(props: TransactionFormProps) {
   const updateTransaction = useUpdateTransaction();
   const deleteTransaction = useDeleteTransaction();
   const scanReceipt = useScanReceipt();
+  const { data: categories } = useCategories();
+  const { data: paymentMethods } = usePaymentMethods();
+
+  const categoryTileOptions = useMemo(
+    () =>
+      (categories ?? []).map((category) => ({
+        value: category.name,
+        icon: CATEGORY_ICONS[category.name] ?? Package,
+      })),
+    [categories]
+  );
+
+  const paymentMethodTileOptions = useMemo(
+    () =>
+      (paymentMethods ?? []).map((method) => ({
+        value: method.name,
+        icon: PAYMENT_METHOD_ICONS[method.name] ?? Wallet,
+      })),
+    [paymentMethods]
+  );
 
   const [values, setValues] = useState<TransactionFormValues>(initialValues);
   const [receiptImage, setReceiptImage] = useState<File | null>(null);
@@ -281,7 +292,7 @@ export function TransactionForm(props: TransactionFormProps) {
             <div className="space-y-1.5">
               <p className="text-sm font-medium text-foreground">カテゴリ</p>
               <OptionTileGrid
-                options={CATEGORY_TILE_OPTIONS}
+                options={categoryTileOptions}
                 value={values.category}
                 onChange={(next) => updateField("category", next)}
               />
@@ -291,7 +302,7 @@ export function TransactionForm(props: TransactionFormProps) {
             <div className="space-y-1.5">
               <p className="text-sm font-medium text-foreground">支払方法</p>
               <OptionTileGrid
-                options={PAYMENT_METHOD_TILE_OPTIONS}
+                options={paymentMethodTileOptions}
                 value={values.paymentMethod}
                 onChange={(next) => updateField("paymentMethod", next)}
               />

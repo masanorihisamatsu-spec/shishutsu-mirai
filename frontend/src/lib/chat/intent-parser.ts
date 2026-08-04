@@ -3,7 +3,6 @@
  * ルールベース（キーワード一致・店舗名の部分一致）で判定し、LLMは使用しない。
  */
 
-import { CATEGORY_OPTIONS } from "@/data/expense-options-dummy-data";
 import type { ChatIntent } from "@/types/chat";
 import type { Transaction } from "@/types/expense";
 
@@ -14,7 +13,11 @@ const OVERSPENDING_KEYWORDS = ["使いすぎ", "使い過ぎ"];
 
 const MIN_STORE_KEYWORD_LENGTH = 3;
 
-export function parseIntent(message: string, transactions: Transaction[]): ChatIntent {
+export function parseIntent(
+  message: string,
+  transactions: Transaction[],
+  categoryNames: string[]
+): ChatIntent {
   const normalized = message.trim();
 
   if (CONVENIENCE_KEYWORDS.some((keyword) => normalized.includes(keyword))) {
@@ -25,7 +28,7 @@ export function parseIntent(message: string, transactions: Transaction[]): ChatI
     return { type: "average_amount" };
   }
 
-  const matchedCategory = CATEGORY_OPTIONS.find((category) => normalized.includes(category));
+  const matchedCategory = categoryNames.find((category) => normalized.includes(category));
   if (matchedCategory) {
     return { type: "category_amount", category: matchedCategory };
   }

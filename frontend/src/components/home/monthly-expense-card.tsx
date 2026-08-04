@@ -17,8 +17,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Toast, type ToastState } from "@/components/ui/toast";
-import { CATEGORY_OPTIONS } from "@/data/expense-options-dummy-data";
 import { useBudgets } from "@/hooks/use-budgets";
+import { useCategories } from "@/hooks/use-categories";
 import { useSetBudget } from "@/hooks/use-set-budget";
 import { ApiError } from "@/lib/api-client";
 import { formatCurrency } from "@/lib/format";
@@ -30,6 +30,8 @@ interface MonthlyExpenseCardProps {
 export function MonthlyExpenseCard({ amount }: MonthlyExpenseCardProps) {
   const { data: budgets } = useBudgets();
   const setBudget = useSetBudget();
+  const { data: categories } = useCategories();
+  const categoryNames = useMemo(() => (categories ?? []).map((category) => category.name), [categories]);
 
   const [open, setOpen] = useState(false);
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
@@ -56,7 +58,7 @@ export function MonthlyExpenseCard({ amount }: MonthlyExpenseCardProps) {
     setOpen(next);
     if (next) {
       const initial: Record<string, string> = {};
-      for (const category of CATEGORY_OPTIONS) {
+      for (const category of categoryNames) {
         const value = budgetByCategory.get(category);
         initial[category] = value ? String(value) : "";
       }
@@ -65,7 +67,7 @@ export function MonthlyExpenseCard({ amount }: MonthlyExpenseCardProps) {
   };
 
   const handleSave = async () => {
-    const changedCategories = CATEGORY_OPTIONS.filter((category) => {
+    const changedCategories = categoryNames.filter((category) => {
       const parsed = Number(inputValues[category]);
       return (
         inputValues[category] &&
@@ -149,7 +151,7 @@ export function MonthlyExpenseCard({ amount }: MonthlyExpenseCardProps) {
             </DialogHeader>
 
             <div className="space-y-3">
-              {CATEGORY_OPTIONS.map((category) => (
+              {categoryNames.map((category) => (
                 <div key={category} className="flex items-center gap-3">
                   <label
                     htmlFor={`budget-${category}`}

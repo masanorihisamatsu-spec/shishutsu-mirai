@@ -5,8 +5,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.api.routes.budgets import router as budgets_router
+from app.api.routes.categories import router as categories_router
 from app.api.routes.imports import router as imports_router
 from app.api.routes.ocr import router as ocr_router
+from app.api.routes.payment_methods import router as payment_methods_router
 from app.api.routes.transactions import router as transactions_router
 from app.core.config import settings
 from app.db.migrate import run_migrations
@@ -35,5 +37,7 @@ app.add_middleware(
 
 app.include_router(transactions_router)
 app.include_router(budgets_router)
+app.include_router(categories_router)
+app.include_router(payment_methods_router)
 app.include_router(ocr_router)
 app.include_router(imports_router)
