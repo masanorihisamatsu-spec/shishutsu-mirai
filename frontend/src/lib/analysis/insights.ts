@@ -8,11 +8,13 @@
 
 import { formatCurrency } from "@/lib/format";
 import type { Insight } from "@/types/analysis";
-import type { Transaction } from "@/types/expense";
+import type { Budget, Transaction } from "@/types/expense";
 
 import {
   getAverageAmountThisMonth,
+  getBudgetUsageThisMonth,
   getConvenienceStoreVisitCount,
+  getMonthlyTotalDiff,
   getSpikingCategories,
   getStoreFrequencyDiffs,
   getTopCategoryThisMonth,
@@ -27,9 +29,11 @@ const STORE_INCREASE_THRESHOLD = 2;
 const CONVENIENCE_VISIT_THRESHOLD = 5;
 const TOP_STORE_VISIT_THRESHOLD = 3;
 const WEEKEND_RATIO_THRESHOLD = 50;
+const BUDGET_HIGH_USAGE_THRESHOLD_PERCENT = 80;
+const MONTHLY_TOTAL_DIFF_THRESHOLD_PERCENT = 10;
 
 /** ルールベースで取引データからAIコメント一覧を生成する（優先度の降順） */
-export function generateInsights(transactions: Transaction[]): Insight[] {
+export function generateInsights(transactions: Transaction[], budgets: Budget[] = []): Insight[] {
   if (transactions.length === 0) return [];
 
   const insights: Insight[] = [];
@@ -40,6 +44,37 @@ export function generateInsights(transactions: Transaction[]): Insight[] {
       id: `spike-${spike.category}`,
       message: `${spike.category}が先月より${spike.diffPercent}%増えています。`,
       priority: 90 + Math.min(spike.diffPercent ?? 0, 100),
+    });
+  }
+
+  // 予算超過・予算使用率（残額も併せて伝える）
+  for (const usage of getBudgetUsageThisMonth(transactions, budgets)) {
+    if (usage.isOverBudget) {
+      insights.push({
+        id: `budget-over-${usage.category}`,
+        message: `${usage.category}が予算を${formatCurrency(Math.abs(usage.remainingAmount))}超過しています（予算${formatCurrency(usage.budgetAmount)}／実績${formatCurrency(usage.spentAmount)}）。`,
+        priority: 85,
+      });
+    } else if (usage.usageRate >= BUDGET_HIGH_USAGE_THRESHOLD_PERCENT) {
+      insights.push({
+        id: `budget-high-usage-${usage.category}`,
+        message: `${usage.category}の予算使用率が${usage.usageRate}%です。残り${formatCurrency(usage.remainingAmount)}です。`,
+        priority: 60,
+      });
+    }
+  }
+
+  // 総支出額の前月比（±10%以上の変動のみ）
+  const totalDiff = getMonthlyTotalDiff(transactions);
+  if (
+    totalDiff.diffPercent !== null &&
+    Math.abs(totalDiff.diffPercent) >= MONTHLY_TOTAL_DIFF_THRESHOLD_PERCENT
+  ) {
+    const trend = totalDiff.diffAmount >= 0 ? "増加" : "減少";
+    insights.push({
+      id: "monthly-total-diff",
+      message: `今月の総支出は先月より${Math.abs(totalDiff.diffPercent)}%${trend}しています（${formatCurrency(totalDiff.previousAmount)}→${formatCurrency(totalDiff.currentAmount)}）。`,
+      priority: 80,
     });
   }
 

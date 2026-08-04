@@ -9,12 +9,15 @@ import { FabMenu } from "@/components/common/fab-menu";
 import { BottomNavigation } from "@/components/layout/bottom-navigation";
 import { Header } from "@/components/layout/header";
 import { HeaderDefaultActions } from "@/components/layout/header-actions";
+import { useBudgets } from "@/hooks/use-budgets";
 import { useTransactions } from "@/hooks/use-transactions";
+import { generateInsights } from "@/lib/analysis";
 import { BOTTOM_NAV_ITEMS } from "@/lib/navigation";
 import { filterByMonth, getMonthKey, groupByCategory, groupByMonth, sumAmount } from "@/lib/reports";
 
 import { CategoryPieCard } from "./category-pie-card";
 import { CategoryRankingCard } from "./category-ranking-card";
+import { InsightReportCard } from "./insight-report-card";
 import { MonthlySummaryCard } from "./monthly-summary-card";
 import { MonthlyTrendCard } from "./monthly-trend-card";
 import { ReportsSkeleton } from "./reports-skeleton";
@@ -23,6 +26,7 @@ const TREND_MONTHS_COUNT = 6;
 
 export function ReportsScreen() {
   const { data: transactions, isPending, isError, error, refetch } = useTransactions();
+  const { data: budgets } = useBudgets();
 
   const currentMonthKey = useMemo(() => getMonthKey(), []);
 
@@ -44,6 +48,11 @@ export function ReportsScreen() {
   const monthlyTrend = useMemo(
     () => groupByMonth(transactions ?? [], TREND_MONTHS_COUNT),
     [transactions]
+  );
+
+  const allInsights = useMemo(
+    () => generateInsights(transactions ?? [], budgets ?? []),
+    [transactions, budgets]
   );
 
   const isEmpty = (transactions ?? []).length === 0;
@@ -82,7 +91,8 @@ export function ReportsScreen() {
               totalAmount={currentMonthTotal}
               count={currentMonthTransactions.length}
             />
-            <AiInsightCard title="AI分析" transactions={transactions ?? []} />
+            <AiInsightCard title="AI分析" transactions={transactions ?? []} budgets={budgets ?? []} />
+            <InsightReportCard insights={allInsights} />
             <CategoryPieCard data={categoryBreakdown} />
             <MonthlyTrendCard data={monthlyTrend} />
             <CategoryRankingCard data={categoryBreakdown} />

@@ -6,7 +6,7 @@ import { MessageCircle, Sparkles } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { generateInsights } from "@/lib/analysis";
-import type { Transaction } from "@/types/expense";
+import type { Budget, Transaction } from "@/types/expense";
 
 import { AnalysisItem } from "./analysis-item";
 
@@ -16,6 +16,7 @@ const ERROR_MESSAGE = "分析データの取得に失敗しました";
 
 interface AiInsightCardProps {
   transactions: Transaction[];
+  budgets?: Budget[];
   isLoading?: boolean;
   isError?: boolean;
   title?: string;
@@ -24,15 +25,16 @@ interface AiInsightCardProps {
 /** ルールベースのAI分析コメントを優先度順に最大3件表示するカード */
 export function AiInsightCard({
   transactions,
+  budgets = [],
   isLoading = false,
   isError = false,
   title = "AI分析",
 }: AiInsightCardProps) {
   // generateInsights はカテゴリ別集計・曜日別集計など複数回ループするため、
-  // transactions が変わっていないのに親の再レンダリングだけで再計算されないようにする
+  // transactions/budgets が変わっていないのに親の再レンダリングだけで再計算されないようにする
   const insights = useMemo(
-    () => generateInsights(transactions).slice(0, MAX_INSIGHTS),
-    [transactions]
+    () => generateInsights(transactions, budgets).slice(0, MAX_INSIGHTS),
+    [transactions, budgets]
   );
 
   return (

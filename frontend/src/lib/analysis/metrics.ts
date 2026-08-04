@@ -4,7 +4,7 @@
  */
 
 import { filterByMonth, getMonthKey, groupByCategory, sumAmount } from "@/lib/reports";
-import type { CategoryExpense, Transaction } from "@/types/expense";
+import type { Budget, CategoryExpense, Transaction } from "@/types/expense";
 
 import { isConvenienceStore } from "./convenience-stores";
 
@@ -60,6 +60,24 @@ export function getCategoryDiffs(transactions: Transaction[]): CategoryDiff[] {
     const diffPercent = previousAmount > 0 ? Math.round((diffAmount / previousAmount) * 100) : null;
     return { category, currentAmount, previousAmount, diffAmount, diffPercent };
   });
+}
+
+export interface MonthlyTotalDiff {
+  currentAmount: number;
+  previousAmount: number;
+  diffAmount: number;
+  /** 先月の実績が0円の場合は算出不能のため null */
+  diffPercent: number | null;
+}
+
+/** 総支出額の「今月 - 先月」の差額・増減率 */
+export function getMonthlyTotalDiff(transactions: Transaction[]): MonthlyTotalDiff {
+  const { thisMonth, lastMonth } = splitThisAndLastMonth(transactions);
+  const currentAmount = sumAmount(thisMonth);
+  const previousAmount = sumAmount(lastMonth);
+  const diffAmount = currentAmount - previousAmount;
+  const diffPercent = previousAmount > 0 ? Math.round((diffAmount / previousAmount) * 100) : null;
+  return { currentAmount, previousAmount, diffAmount, diffPercent };
 }
 
 /** 急増カテゴリ（先月比 thresholdPercent% 以上増加、かつ先月の実績があるもの）を増加率の降順で返す */
@@ -126,6 +144,38 @@ export function getStoreFrequencyDiffs(transactions: Transaction[]): StoreFreque
       diffCount: item.count - (previousMap.get(item.storeName) ?? 0),
     }))
     .sort((a, b) => b.diffCount - a.diffCount);
+}
+
+export interface BudgetUsage {
+  category: string;
+  budgetAmount: number;
+  spentAmount: number;
+  /** 予算に対する使用率（%）。予算超過時は100を超える */
+  usageRate: number;
+  /** 残額。超過時は負数 */
+  remainingAmount: number;
+  isOverBudget: boolean;
+}
+
+/** 今月のカテゴリ別予算使用状況（予算が設定されているカテゴリのみ、使用率の降順） */
+export function getBudgetUsageThisMonth(transactions: Transaction[], budgets: Budget[]): BudgetUsage[] {
+  const { thisMonth } = splitThisAndLastMonth(transactions);
+  const spentMap = new Map(groupByCategory(thisMonth).map((item) => [item.category, item.amount]));
+
+  return budgets
+    .filter((budget) => budget.amount > 0)
+    .map((budget) => {
+      const spentAmount = spentMap.get(budget.category) ?? 0;
+      return {
+        category: budget.category,
+        budgetAmount: budget.amount,
+        spentAmount,
+        usageRate: Math.round((spentAmount / budget.amount) * 100),
+        remainingAmount: budget.amount - spentAmount,
+        isOverBudget: spentAmount > budget.amount,
+      };
+    })
+    .sort((a, b) => b.usageRate - a.usageRate);
 }
 
 /** 今月のコンビニ利用回数 */
