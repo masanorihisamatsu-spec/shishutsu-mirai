@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Package, Trash2, Wallet } from "lucide-react";
 
 import { BackHeader } from "@/components/common/back-header";
@@ -27,7 +27,12 @@ import { useScanReceipt } from "@/hooks/use-scan-receipt";
 import { useUpdateTransaction } from "@/hooks/use-update-transaction";
 import { ApiError } from "@/lib/api-client";
 import { CATEGORY_ICONS, PAYMENT_METHOD_ICONS } from "@/lib/option-icons";
-import { applyOcrResultToFormValues, consumeOcrPrefill } from "@/services/ocr";
+import {
+  applyOcrResultToFormValues,
+  consumeOcrPrefill,
+  guessCategoryFromStoreName,
+  type OcrReceiptResult,
+} from "@/services/ocr";
 import type { TransactionFormValues } from "@/types/transaction-form";
 
 import { FormField } from "./form-field";
@@ -65,6 +70,8 @@ export function TransactionForm(props: TransactionFormProps) {
     [categories]
   );
 
+  const categoryNames = useMemo(() => (categories ?? []).map((category) => category.name), [categories]);
+
   const paymentMethodTileOptions = useMemo(
     () =>
       (paymentMethods ?? []).map((method) => ({
@@ -80,17 +87,31 @@ export function TransactionForm(props: TransactionFormProps) {
   const [errors, setErrors] = useState<FormErrors>({});
   const [toast, setToast] = useState<ToastState | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const consumedOcrPrefillRef = useRef<OcrReceiptResult | null>(null);
 
   // データ取込センターでOCRした結果を、この画面に来た直後だけ一度反映する
   useEffect(() => {
     if (mode !== "create") return;
     const prefill = consumeOcrPrefill();
     if (!prefill) return;
+    consumedOcrPrefillRef.current = prefill;
 
-    setValues((prev) => applyOcrResultToFormValues(prev, prefill));
+    setValues((prev) => applyOcrResultToFormValues(prev, prefill, categoryNames));
     setReceiptImagePath(prefill.receipt_image);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // カテゴリ一覧の取得が上記より遅れて完了した場合に備え、まだ未選択なら推定を再適用する
+  // （店舗名・日付・金額は再適用しない＝ユーザーがその間に編集した内容を上書きしないため）
+  useEffect(() => {
+    const prefill = consumedOcrPrefillRef.current;
+    if (!prefill?.store_name || categoryNames.length === 0) return;
+
+    const guessed = guessCategoryFromStoreName(prefill.store_name, categoryNames);
+    if (!guessed) return;
+
+    setValues((prev) => (prev.category ? prev : { ...prev, category: guessed }));
+  }, [categoryNames]);
 
   const isSubmitting =
     mode === "create" ? createTransaction.isPending : updateTransaction.isPending;
@@ -112,7 +133,7 @@ export function TransactionForm(props: TransactionFormProps) {
 
     scanReceipt.mutate(file, {
       onSuccess: (result) => {
-        setValues((prev) => applyOcrResultToFormValues(prev, result));
+        setValues((prev) => applyOcrResultToFormValues(prev, result, categoryNames));
         setReceiptImagePath(result.receipt_image);
       },
       onError: (error) => {
@@ -328,7 +349,7 @@ export function TransactionForm(props: TransactionFormProps) {
                 isScanning={scanReceipt.isPending}
               />
               <p className="text-xs text-muted-foreground">
-                画像を選択すると、店舗名・日付・金額をAIが自動入力します（認識できなかった項目は手入力してください）。
+                画像を選択すると、店舗名・日付・金額をAIが自動入力します（カテゴリも店舗名から推定を試みます。認識できなかった項目は手入力してください）。
               </p>
             </div>
           </CardContent>
