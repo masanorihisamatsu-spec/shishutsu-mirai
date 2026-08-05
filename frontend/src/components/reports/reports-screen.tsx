@@ -11,10 +11,11 @@ import { Header } from "@/components/layout/header";
 import { HeaderDefaultActions } from "@/components/layout/header-actions";
 import { useBudgets } from "@/hooks/use-budgets";
 import { useTransactions } from "@/hooks/use-transactions";
-import { generateInsights } from "@/lib/analysis";
+import { generateInsights, getBudgetUsageThisMonth } from "@/lib/analysis";
 import { BOTTOM_NAV_ITEMS } from "@/lib/navigation";
 import { filterByMonth, getMonthKey, groupByCategory, groupByMonth, sumAmount } from "@/lib/reports";
 
+import { BudgetComparisonCard } from "./budget-comparison-card";
 import { CategoryPieCard } from "./category-pie-card";
 import { CategoryRankingCard } from "./category-ranking-card";
 import { InsightReportCard } from "./insight-report-card";
@@ -55,6 +56,11 @@ export function ReportsScreen() {
     [transactions, budgets]
   );
 
+  const budgetUsage = useMemo(
+    () => getBudgetUsageThisMonth(transactions ?? [], budgets ?? []),
+    [transactions, budgets]
+  );
+
   const isEmpty = (transactions ?? []).length === 0;
 
   return (
@@ -91,6 +97,7 @@ export function ReportsScreen() {
               totalAmount={currentMonthTotal}
               count={currentMonthTransactions.length}
             />
+            <BudgetComparisonCard data={budgetUsage} />
             <AiInsightCard title="AI分析" transactions={transactions ?? []} budgets={budgets ?? []} />
             <InsightReportCard insights={allInsights} />
             <CategoryPieCard data={categoryBreakdown} />
