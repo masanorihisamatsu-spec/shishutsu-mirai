@@ -4,16 +4,19 @@ import { FabMenu } from "@/components/common/fab-menu";
 import { BottomNavigation } from "@/components/layout/bottom-navigation";
 import { Header } from "@/components/layout/header";
 import { HeaderDefaultActions } from "@/components/layout/header-actions";
+import { useBudgets } from "@/hooks/use-budgets";
 import { useCategories } from "@/hooks/use-categories";
 import { useCreateCategory } from "@/hooks/use-create-category";
 import { useCreatePaymentMethod } from "@/hooks/use-create-payment-method";
 import { useDeleteCategory } from "@/hooks/use-delete-category";
 import { useDeletePaymentMethod } from "@/hooks/use-delete-payment-method";
 import { usePaymentMethods } from "@/hooks/use-payment-methods";
+import { useSetBudget } from "@/hooks/use-set-budget";
 import { useUpdateCategory } from "@/hooks/use-update-category";
 import { useUpdatePaymentMethod } from "@/hooks/use-update-payment-method";
 import { BOTTOM_NAV_ITEMS } from "@/lib/navigation";
 
+import { BudgetSettingsCard } from "./budget-settings-card";
 import { OptionListManager } from "./option-list-manager";
 
 export function SettingsScreen() {
@@ -26,6 +29,9 @@ export function SettingsScreen() {
   const createPaymentMethod = useCreatePaymentMethod();
   const updatePaymentMethod = useUpdatePaymentMethod();
   const deletePaymentMethod = useDeletePaymentMethod();
+
+  const budgetsQuery = useBudgets();
+  const setBudget = useSetBudget();
 
   return (
     <div className="min-h-screen bg-background pb-28">
@@ -57,6 +63,16 @@ export function SettingsScreen() {
           onCreate={(name) => createPaymentMethod.mutateAsync({ name })}
           onUpdate={(id, name) => updatePaymentMethod.mutateAsync({ id, payload: { name } })}
           onDelete={(id) => deletePaymentMethod.mutateAsync(id)}
+        />
+
+        <BudgetSettingsCard
+          categories={categoriesQuery.data ?? []}
+          categoriesPending={categoriesQuery.isPending}
+          categoriesError={categoriesQuery.isError}
+          budgets={budgetsQuery.data ?? []}
+          budgetsPending={budgetsQuery.isPending}
+          budgetsError={budgetsQuery.isError}
+          onSave={(category, amount) => setBudget.mutateAsync({ category, amount })}
         />
       </main>
 
