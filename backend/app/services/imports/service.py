@@ -10,19 +10,22 @@ from pydantic import ValidationError
 
 from app.repositories.transaction_repository import TransactionRepository
 from app.schemas.transaction import TransactionCreate
-from app.services.imports import excel, jcb_csv, paypay_csv, paypay_pdf, rakuten_csv
+from app.services.imports import excel, generic_csv, jcb_csv, paypay_csv, paypay_pdf, rakuten_csv
 from app.services.imports.base import ParseResult, decode_csv_bytes
 
 CSV_DETECTORS = (
     ("jcb_csv", jcb_csv.can_parse),
     ("rakuten_csv", rakuten_csv.can_parse),
     ("paypay_csv", paypay_csv.can_parse),
+    # 汎用CSVは他形式に一致しない場合の最後の受け皿として最後に判定する
+    ("generic_csv", generic_csv.can_parse),
 )
 
 PARSERS = {
     "paypay_csv": paypay_csv.parse,
     "rakuten_csv": rakuten_csv.parse,
     "jcb_csv": jcb_csv.parse,
+    "generic_csv": generic_csv.parse,
     "paypay_pdf": paypay_pdf.parse,
     "excel": excel.parse,
 }
@@ -108,7 +111,8 @@ class ImportService:
             if can_parse(header):
                 return source_format
         raise UnsupportedFileFormatError(
-            "対応していないCSV形式です（PayPay / 楽天カード / JCBのみ対応しています）"
+            "対応していないCSV形式です"
+            "（PayPay / 楽天カード / JCB / 汎用CSV「日付,店舗,金額」のみ対応しています）"
         )
 
     def _read_csv_header(self, content: bytes) -> list[str]:

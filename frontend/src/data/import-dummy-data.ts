@@ -21,7 +21,7 @@ export const importMethodsDummy: ImportMethod[] = [
     id: "csv",
     title: "CSV",
     description: "対応サービスの明細CSVを取り込みます",
-    supportedSources: ["PayPay", "楽天カード", "JCB"],
+    supportedSources: ["PayPay", "楽天カード", "JCB", "汎用CSV"],
     actionLabel: "取り込む",
   },
   {

@@ -13,6 +13,7 @@ const SOURCE_FORMAT_LABELS: Record<string, string> = {
   paypay_csv: "PayPay（CSV）",
   rakuten_csv: "楽天カード（CSV）",
   jcb_csv: "JCB（CSV）",
+  generic_csv: "汎用CSV",
   paypay_pdf: "PayPay（PDF）",
   excel: "Excel家計簿",
 };
