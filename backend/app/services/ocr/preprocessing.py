@@ -1,56 +1,42 @@
 """
-OCR 認識率向上のための画像前処理。
+OCR 認識率向上・Render無料プラン等のリソース制約下での安定動作のための画像前処理。
 
-- EXIF の Orientation タグに基づく回転補正（スマホ縦横撮影のズレ対策）
-- Tesseract の OSD（Orientation and Script Detection）による90度単位の傾き再補正
-- グレースケール化 + 解像度の正規化（リサイズ）
+- EXIF回転補正は呼び出し側（OcrService）が行う前提（ここでは二重に行わない）
+- 長辺が上限を超える画像はOCRにかける前に縮小する（小さい画像は拡大しない）。
+  スマホ写真は数千px四方になることがあり、Tesseractのメモリ・CPU消費を大きく左右するため、
+  OCRの精度に大きく影響しない範囲まで先に縮小してから以降の処理にかける。
+- グレースケール化
+
+Tesseract の OSD（Orientation and Script Detection）による90度単位の傾き補正は、
+Tesseractをもう1回余分に呼び出すことになりメモリ・CPU消費が大きいため実施しない。
+EXIF回転補正で大半のケースはカバーできる想定。
 """
 
-import re
+from PIL import Image
 
-import pytesseract
-from PIL import Image, ImageOps
-
-TARGET_WIDTH = 1600
+MAX_LONG_EDGE = 1500
 
 
-def correct_exif_orientation(image: Image.Image) -> Image.Image:
-    """EXIFのOrientationタグに基づいて画像を正立させる。"""
-    return ImageOps.exif_transpose(image) or image
-
-
-def correct_skew_with_osd(image: Image.Image) -> Image.Image:
-    """Tesseract の OSD 機能で90度単位の回転ズレを検出し補正する。"""
-    try:
-        osd = pytesseract.image_to_osd(image)
-    except pytesseract.TesseractError:
-        return image
-
-    match = re.search(r"Rotate: (\d+)", osd)
-    angle = int(match.group(1)) if match else 0
-    if angle:
-        return image.rotate(-angle, expand=True, fillcolor="white")
-    return image
-
-
-def resize_for_ocr(image: Image.Image, target_width: int = TARGET_WIDTH) -> Image.Image:
-    """画像幅を一定サイズに正規化する（小さすぎる画像は拡大、大きすぎる画像は縮小）。"""
+def resize_for_ocr(image: Image.Image, max_long_edge: int = MAX_LONG_EDGE) -> Image.Image:
+    """長辺が max_long_edge を超える場合のみ縮小する（小さい画像を拡大することはしない）。"""
     width, height = image.size
     if width == 0 or height == 0:
         return image
 
-    scale = target_width / width
-    if abs(scale - 1.0) < 0.05:
+    long_edge = max(width, height)
+    if long_edge <= max_long_edge:
         return image
 
-    new_size = (target_width, max(1, round(height * scale)))
+    scale = max_long_edge / long_edge
+    new_size = (max(1, round(width * scale)), max(1, round(height * scale)))
     return image.resize(new_size, Image.LANCZOS)
 
 
 def preprocess_for_ocr(image: Image.Image) -> Image.Image:
-    """OCR にかける直前の画像を作る。元画像（保存用）には影響を与えない。"""
-    processed = correct_exif_orientation(image)
-    processed = correct_skew_with_osd(processed)
+    """
+    OCR にかける直前の画像を作る。呼び出し側で既にEXIF補正済みの画像を渡す前提。
+    先に縮小してから以降の処理にかけることで、グレースケール化・OCR実行の負荷を抑える。
+    """
+    processed = resize_for_ocr(image)
     processed = processed.convert("L")
-    processed = resize_for_ocr(processed)
     return processed

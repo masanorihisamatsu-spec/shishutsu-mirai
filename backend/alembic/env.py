@@ -15,7 +15,11 @@ config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url)
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # disable_existing_loggers のデフォルト(True)のままだと、alembic.ini の [loggers] に
+    # 列挙されていない既存のロガー（uvicornや本アプリの各モジュールのロガー）が無効化されてしまう。
+    # run_migrations() はアプリ起動時（lifespan）に毎回呼ばれるため、これを防がないと
+    # 起動後のアクセスログ・エラーログが一切出力されなくなる。
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
 

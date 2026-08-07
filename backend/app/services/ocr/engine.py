@@ -22,9 +22,14 @@ class OcrEngine(ABC):
 
 
 class TesseractOcrEngine(OcrEngine):
-    """OSS の Tesseract OCR を使った実装。日本語＋英語を認識対象とする。"""
+    """
+    OSS の Tesseract OCR を使った実装。日本語のみを認識対象とする。
 
-    def __init__(self, lang: str = "jpn+eng") -> None:
+    Render無料プラン等のメモリ制約下で安定動作させるため、英語のtraineddataは
+    同時ロードしない（数字はjpnのtraineddataでも認識できるため実用上の影響は小さい）。
+    """
+
+    def __init__(self, lang: str = "jpn") -> None:
         self.lang = lang
 
     def extract_text(self, image: Image.Image) -> str:
