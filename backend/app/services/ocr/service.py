@@ -48,10 +48,13 @@ class OcrService:
 
         # 保存する画像は向きだけ補正し、それ以外は加工しない（人が見返すための記録用のため）
         upright_image = ImageOps.exif_transpose(image) or image
-        receipt_image_path = self._save_image(upright_image, filename)
 
-        ocr_ready_image = preprocess_for_ocr(upright_image)
-        raw_text = self._extract_text(ocr_ready_image)
+        try:
+            receipt_image_path = self._save_image(upright_image, filename)
+            ocr_ready_image = preprocess_for_ocr(upright_image)
+            raw_text = self.engine.extract_text(ocr_ready_image)
+        except Exception as exc:  # noqa: BLE001 - 画像保存/前処理/OCR実行起因の例外を一律ドメイン例外に変換する
+            raise OcrProcessingError("OCR処理に失敗しました") from exc
 
         parsed = parse_receipt_text(raw_text)
         return OcrResult(
@@ -69,12 +72,6 @@ class OcrService:
         except UnidentifiedImageError as exc:
             raise OcrProcessingError("画像を読み込めませんでした") from exc
         return image
-
-    def _extract_text(self, image: Image.Image) -> str:
-        try:
-            return self.engine.extract_text(image)
-        except Exception as exc:  # noqa: BLE001 - OCRエンジン起因の例外を一律ドメイン例外に変換する
-            raise OcrProcessingError("OCR処理に失敗しました") from exc
 
     def _save_image(self, image: Image.Image, original_filename: str) -> str:
         uploads_dir = Path(settings.uploads_dir)
