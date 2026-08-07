@@ -35,15 +35,19 @@ _DATE_PATTERNS = [
 
 # 店舗名候補から除外する行のパターン群。店舗名そのものに市区町村名が含まれることも多い
 # （例:「エコパーキング上本町」）ため、住所らしさの判定は郵便番号・都道府県レベルに留める。
+# これらは _is_store_name_candidate 内で「空白を除去した行（core）」に対して適用する。
+# Tesseractは「領 収 書」のように全角文字の間に空白を誤って挿入することがあり、
+# 元の行（空白入り）のままだと文字列が分断されて除外パターンにマッチしなくなるため。
 _STORE_NAME_EXCLUDE_PATTERNS = [
-    re.compile(r"^[\d\s\-:./TEL#*＊№No.]*$", re.IGNORECASE),  # 数字・記号のみの行
+    re.compile(r"^[\d\-:./TEL#*＊№No.]*$", re.IGNORECASE),  # 数字・記号のみの行
     re.compile(r"\d{2,4}[年/\-.]\d{1,2}[月/\-.]\d{1,2}"),  # 日付
     re.compile(r"\d{1,2}:\d{2}(:\d{2})?"),  # 時刻
-    re.compile(r"合計|小計|総額|お会計|ご利用金額|お支払|お預かり|お釣り|税込|税抜|消費税|料金"),  # 金額系ラベル
+    re.compile(r"合計|小計|総額|お会計|ご利用金額|お支払|お預かり|お釣り|税込|税抜|消費税|料金|お買上"),  # 金額系ラベル
     re.compile(r"[¥￥]|円$"),  # 金額表記そのもの
     re.compile(r"TEL|電話|FAX", re.IGNORECASE),  # 電話番号系
-    re.compile(r"〒|(都|道|府|県)[^\s]{2,}(市|区|郡)"),  # 郵便番号・「東京都渋谷区」のような住所表記
-    re.compile(r"領収書|レシート|ありがとうございました|またお越しください|明細"),  # 定型文
+    re.compile(r"〒|(都|道|府|県)?[^\s]{2,6}(市|区|郡)[^\s]{0,10}(市|区|町|村)?"),  # 郵便番号・住所表記
+    # 帳票タイトル（店舗名ではなく「これは領収書です」という書類種別を表すだけの語）
+    re.compile(r"領収書|領収証|レシート|RECEIPT|明細書|明細|ありがとうございました|またお越しください", re.IGNORECASE),
 ]
 
 # 店舗名として想定される文字種（ひらがな・カタカナ・漢字・英数字・記号少々）。
@@ -60,6 +64,14 @@ _STORE_NAME_LETTER_CHAR = re.compile(r"[぀-ゟ゠-ヿ一-鿿ｦ-ﾟ0-9A-Za-z]")
 # 上の2つのチェックをすり抜けることがあるため、店舗名には数字以外の文字が
 # 一定数含まれることを別途要求する（実在の店舗名は数字の羅列だけにはならない）。
 _STORE_NAME_NON_DIGIT_LETTER = re.compile(r"[぀-ゟ゠-ヿ一-鿿ｦ-ﾟA-Za-z]")
+# 店名（チェーン名等）はカタカナを含む固有名詞であることが多いため、
+# 複数の候補行がある場合はカタカナを含む行を優先する。
+_KATAKANA_CHAR = re.compile(r"[゠-ヿｦ-ﾟ]")
+# レシート上部だけを見れば十分なため、候補として集める行数の上限。
+_STORE_NAME_CANDIDATE_SCAN_LIMIT = 8
+# カタカナ優先を適用するのは上位の候補に限る（離れた場所にある無関係な行が
+# たまたまカタカナを含んでいた場合に、正しい先頭候補を上書きしないようにするため）。
+_STORE_NAME_KATAKANA_PREFERENCE_WINDOW = 3
 
 
 @dataclass
@@ -128,11 +140,12 @@ def _is_garbage_line(line: str) -> bool:
 def _is_store_name_candidate(line: str) -> bool:
     if len(line) < 2:
         return False
-    if any(pattern.search(line) for pattern in _STORE_NAME_EXCLUDE_PATTERNS):
-        return False
 
     core = re.sub(r"\s", "", line)
     if not core:
+        return False
+
+    if any(pattern.search(core) for pattern in _STORE_NAME_EXCLUDE_PATTERNS):
         return False
 
     unexpected_chars = _UNEXPECTED_STORE_NAME_CHAR.findall(core)
@@ -154,15 +167,31 @@ def _is_store_name_candidate(line: str) -> bool:
 
 def find_store_name_candidate(text: str) -> str | None:
     """
-    テキストから店舗名候補を1行選ぶ（条件を満たす最初の行）。
+    テキストから店舗名候補を選ぶ。
     レシート全文からのフォールバック抽出（parse_receipt_text）だけでなく、
     店舗名領域だけを切り出した専用OCR（store_name.py）からも共通で使う。
+
+    優先順位:
+      1. レシート上部（先頭）に近い行を優先する（先頭からスキャンし、一定数見つかった時点で打ち切る）
+      2. その中でカタカナを含む行があれば優先する（店名はカタカナを含む固有名詞であることが多いため）
+      3. 住所・電話番号・帳票タイトル（「領収書」等）・金額行は _is_store_name_candidate 側で除外済み
     """
+    candidates: list[str] = []
     for line in text.splitlines():
         stripped = line.strip()
         if _is_store_name_candidate(stripped):
-            return stripped
-    return None
+            candidates.append(stripped)
+            if len(candidates) >= _STORE_NAME_CANDIDATE_SCAN_LIMIT:
+                break
+
+    if not candidates:
+        return None
+
+    for candidate in candidates[:_STORE_NAME_KATAKANA_PREFERENCE_WINDOW]:
+        if _KATAKANA_CHAR.search(candidate):
+            return candidate
+
+    return candidates[0]
 
 
 def parse_receipt_text(text: str) -> ParsedReceipt:
