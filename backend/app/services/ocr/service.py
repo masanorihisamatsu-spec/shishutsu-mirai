@@ -49,11 +49,17 @@ class OcrService:
         # 保存する画像は向きだけ補正し、それ以外は加工しない（人が見返すための記録用のため）
         upright_image = ImageOps.exif_transpose(image) or image
 
+        # 「画像保存」と「前処理+OCR実行」を分けて捕捉することで、422のdetailだけで
+        # どちらの段階（ディスク書き込み起因か、Tesseract起因か）で失敗したか切り分けられるようにする。
         try:
             receipt_image_path = self._save_image(upright_image, filename)
+        except Exception as exc:  # noqa: BLE001 - 画像保存起因の例外を一律ドメイン例外に変換する
+            raise OcrProcessingError("画像の保存に失敗しました") from exc
+
+        try:
             ocr_ready_image = preprocess_for_ocr(upright_image)
             raw_text = self.engine.extract_text(ocr_ready_image)
-        except Exception as exc:  # noqa: BLE001 - 画像保存/前処理/OCR実行起因の例外を一律ドメイン例外に変換する
+        except Exception as exc:  # noqa: BLE001 - 前処理/OCR実行起因の例外を一律ドメイン例外に変換する
             raise OcrProcessingError("OCR処理に失敗しました") from exc
 
         parsed = parse_receipt_text(raw_text)
