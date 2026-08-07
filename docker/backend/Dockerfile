@@ -11,10 +11,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr-jpn \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+# Renderのダッシュボード上のDocker設定はビルドコンテキストをリポジトリルートとして扱うため、
+# COPY元はリポジトリルート基準の backend/ 配下として明示する（docker-compose.yml側もこれに合わせている）。
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY backend/ .
 
 EXPOSE 8000
 
