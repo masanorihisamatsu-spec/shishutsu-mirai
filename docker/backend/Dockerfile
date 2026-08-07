@@ -18,4 +18,6 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# Render等、PORT環境変数でリッスンポートを指定するプラットフォーム向けに対応しつつ、
+# ローカル（docker-compose、PORT未設定）では従来通り8000で待ち受ける。
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --reload"]
