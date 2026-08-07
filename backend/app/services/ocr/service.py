@@ -44,7 +44,7 @@ class OcrService:
     """
 
     def __init__(self, engine: OcrEngine | None = None) -> None:
-        self.engine = engine or TesseractOcrEngine()
+        self.engine = engine or TesseractOcrEngine(lang=settings.ocr_lang, psm=settings.ocr_psm)
 
     def process_receipt(self, filename: str, content: bytes) -> OcrResult:
         original_image = self._load_image(content)
@@ -68,7 +68,18 @@ class OcrService:
 
             try:
                 ocr_ready_image = preprocess_for_ocr(upright_image)
+                if settings.ocr_debug_save_preprocessed:
+                    self._save_debug_preprocessed_image(ocr_ready_image, receipt_image_path)
+
                 raw_text = self.engine.extract_text(ocr_ready_image)
+                if settings.ocr_debug_save_preprocessed:
+                    logger.info(
+                        "OCR認識結果（filename=%s, lang=%s, psm=%s）: %r",
+                        filename,
+                        getattr(self.engine, "lang", "?"),
+                        getattr(self.engine, "psm", "?"),
+                        raw_text,
+                    )
             except Exception as exc:  # noqa: BLE001 - 前処理/OCR実行起因の例外を一律ドメイン例外に変換する
                 logger.exception(
                     "OCR処理に失敗しました（filename=%s, size=%s）", filename, upright_image.size
@@ -113,3 +124,17 @@ class OcrService:
             image.convert("RGB").save(path, format="JPEG", quality=90)
 
         return (Path(settings.uploads_dir) / filename).as_posix()
+
+    def _save_debug_preprocessed_image(self, image: Image.Image, receipt_image_path: str) -> None:
+        """
+        OCR直前（前処理後）の画像を保存版と並べて確認できるようにするデバッグ用途。
+        settings.ocr_debug_save_preprocessed が True の場合のみ呼ばれる。
+        保存失敗はOCR本処理の成否に影響させない。
+        """
+        debug_path = Path(receipt_image_path).with_name(
+            f"{Path(receipt_image_path).stem}_preprocessed.png"
+        )
+        try:
+            image.save(debug_path, format="PNG")
+        except Exception:  # noqa: BLE001 - デバッグ用保存の失敗でOCR自体を失敗させない
+            logger.exception("前処理後画像のデバッグ保存に失敗しました（path=%s）", debug_path)
