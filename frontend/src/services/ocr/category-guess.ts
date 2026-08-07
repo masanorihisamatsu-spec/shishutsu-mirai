@@ -23,7 +23,19 @@ const CATEGORY_KEYWORD_RULES: { category: string; keywords: string[] }[] = [
   },
   {
     category: "交通費",
-    keywords: ["JR", "地下鉄", "タクシー", "Suica", "ICOCA"],
+    keywords: [
+      "JR",
+      "地下鉄",
+      "タクシー",
+      "Suica",
+      "ICOCA",
+      "パーキング",
+      "駐車場",
+      "駐車",
+      "PARKING",
+      "コインパーク",
+      "タイムズ",
+    ],
   },
   {
     category: "医療費",

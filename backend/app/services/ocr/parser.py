@@ -14,8 +14,13 @@ import re
 from dataclasses import dataclass
 from datetime import date
 
+# 「合計」を優先し、「小計」はあえて含めない（お預かり前の金額を誤って拾わないため）。
+# 駐車場の領収書等では「料金」「TOTAL」表記が使われることもあるため対応する。
 _AMOUNT_LABEL_PATTERNS = [
-    re.compile(r"(?:合計|総額|ご請求額?|お会計|ご利用金額|お支払い?金額?)[^\d]{0,10}([\d,]{3,})"),
+    re.compile(
+        r"(?:合計|総額|ご請求額?|お会計|ご利用金額|お支払い?金額?|料金|TOTAL)[^\d]{0,10}([\d,]{3,})",
+        re.IGNORECASE,
+    ),
 ]
 _AMOUNT_FALLBACK_PATTERN = re.compile(r"[¥￥]\s*([\d,]{3,})|([\d,]{3,})\s*円")
 
@@ -23,7 +28,18 @@ _DATE_PATTERNS = [
     re.compile(r"(20\d{2})[年/\-.](\d{1,2})[月/\-.](\d{1,2})"),
 ]
 
-_NON_STORE_NAME_LINE = re.compile(r"^[\d\s\-:./TEL#*＊№No.]*$", re.IGNORECASE)
+# 店舗名候補から除外する行のパターン群。店舗名そのものに市区町村名が含まれることも多い
+# （例:「エコパーキング上本町」）ため、住所らしさの判定は郵便番号・都道府県レベルに留める。
+_STORE_NAME_EXCLUDE_PATTERNS = [
+    re.compile(r"^[\d\s\-:./TEL#*＊№No.]*$", re.IGNORECASE),  # 数字・記号のみの行
+    re.compile(r"\d{2,4}[年/\-.]\d{1,2}[月/\-.]\d{1,2}"),  # 日付
+    re.compile(r"\d{1,2}:\d{2}(:\d{2})?"),  # 時刻
+    re.compile(r"合計|小計|総額|お会計|ご利用金額|お支払|お預かり|お釣り|税込|税抜|消費税|料金"),  # 金額系ラベル
+    re.compile(r"[¥￥]|円$"),  # 金額表記そのもの
+    re.compile(r"TEL|電話|FAX", re.IGNORECASE),  # 電話番号系
+    re.compile(r"〒|(都|道|府|県)[^\s]{2,}(市|区|郡)"),  # 郵便番号・「東京都渋谷区」のような住所表記
+    re.compile(r"領収書|レシート|ありがとうございました|またお越しください|明細"),  # 定型文
+]
 
 
 @dataclass
@@ -62,14 +78,17 @@ def _parse_date(text: str) -> date | None:
     return None
 
 
+def _is_store_name_candidate(line: str) -> bool:
+    if len(line) < 2:
+        return False
+    return not any(pattern.search(line) for pattern in _STORE_NAME_EXCLUDE_PATTERNS)
+
+
 def _parse_store_name(text: str) -> str | None:
     for line in text.splitlines():
         stripped = line.strip()
-        if len(stripped) < 2:
-            continue
-        if _NON_STORE_NAME_LINE.match(stripped):
-            continue
-        return stripped
+        if _is_store_name_candidate(stripped):
+            return stripped
     return None
 
 
