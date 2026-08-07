@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -13,6 +14,12 @@ from app.api.routes.transactions import router as transactions_router
 from app.core.config import settings
 from app.db.migrate import run_migrations
 from app.db.session import engine
+
+# alembic.ini の [logger_root] level = WARNING により、明示的にレベル指定していない
+# アプリ内ロガー（app.* 配下、例: app.services.ocr.*）の実効レベルもWARNINGになってしまい、
+# OCRの診断用に仕込んだ logger.info(...) がRenderのログに一切出力されない状態だった。
+# sqlalchemy等サードパーティのログレベルには触れず、appパッケージ配下のみINFOにする。
+logging.getLogger("app").setLevel(logging.INFO)
 
 
 @asynccontextmanager

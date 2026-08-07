@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.services.ocr.engine import OcrEngine, TesseractOcrEngine
 from app.services.ocr.parser import parse_receipt_text
 from app.services.ocr.preprocessing import preprocess_for_ocr
+from app.services.ocr.store_name import crop_store_name_region, extract_store_name
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,7 @@ class OcrService:
             original_image.close()
 
         ocr_ready_image: Image.Image | None = None
+        store_name_region: Image.Image | None = None
         try:
             # 「画像保存」と「前処理+OCR実行」を分けて捕捉することで、422のdetailだけで
             # どちらの段階（ディスク書き込み起因か、Tesseract起因か）で失敗したか切り分けられるようにする。
@@ -85,14 +87,41 @@ class OcrService:
                     "OCR処理に失敗しました（filename=%s, size=%s）", filename, upright_image.size
                 )
                 raise OcrProcessingError("OCR処理に失敗しました") from exc
+
+            parsed = parse_receipt_text(raw_text)
+
+            # 店舗名はレシート上部だけを切り出して専用のOCRを追加で試みた方が精度が良いことが
+            # 多いため、ここで別途試す。失敗しても金額・日付（parsedとして確定済み）や
+            # 全体テキストからの店舗名候補には一切影響させない（フォールバックするだけ）。
+            store_name = parsed.store_name
+            try:
+                store_name_region = crop_store_name_region(upright_image)
+                cropped_store_name = extract_store_name(
+                    store_name_region, lang=getattr(self.engine, "lang", settings.ocr_lang)
+                )
+                if cropped_store_name:
+                    store_name = cropped_store_name
+                logger.info(
+                    "店舗名抽出結果（filename=%s）: 全体OCR候補=%r 領域専用OCR候補=%r 採用=%r",
+                    filename,
+                    parsed.store_name,
+                    cropped_store_name,
+                    store_name,
+                )
+            except Exception:  # noqa: BLE001 - 店舗名専用OCRの失敗でOCR処理全体を失敗させない
+                logger.exception(
+                    "店舗名専用OCRに失敗しました。全体OCRからの候補にフォールバックします（filename=%s）",
+                    filename,
+                )
         finally:
             upright_image.close()
             if ocr_ready_image is not None:
                 ocr_ready_image.close()
+            if store_name_region is not None:
+                store_name_region.close()
 
-        parsed = parse_receipt_text(raw_text)
         return OcrResult(
-            store_name=parsed.store_name,
+            store_name=store_name,
             transaction_date=parsed.date,
             amount=parsed.amount,
             receipt_image=receipt_image_path,

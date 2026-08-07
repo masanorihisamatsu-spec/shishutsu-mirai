@@ -11,6 +11,7 @@ Tesseract が返す生テキストから「店舗名・日付・金額」を抜�
 """
 
 import re
+from collections import Counter
 from dataclasses import dataclass
 from datetime import date
 
@@ -44,6 +45,21 @@ _STORE_NAME_EXCLUDE_PATTERNS = [
     re.compile(r"〒|(都|道|府|県)[^\s]{2,}(市|区|郡)"),  # 郵便番号・「東京都渋谷区」のような住所表記
     re.compile(r"領収書|レシート|ありがとうございました|またお越しください|明細"),  # 定型文
 ]
+
+# 店舗名として想定される文字種（ひらがな・カタカナ・漢字・英数字・記号少々）。
+# これ以外の文字（Tesseractがノイズを無理やり別の記号にしてしまった場合等）が
+# 多く混ざる行は店舗名候補から除外する。
+_UNEXPECTED_STORE_NAME_CHAR = re.compile(
+    r"[^぀-ゟ゠-ヿ一-鿿ｦ-ﾟ0-9A-Za-z()（）・.,&/\- ]"
+)
+# 「実際に意味を持つ文字」（ひらがな・カタカナ・漢字・英数字）のみにマッチする。
+# 記号ばかりで構成される行（低画質時にTesseractが記号の羅列を返すケース）を
+# _UNEXPECTED_STORE_NAME_CHAR だけでは検出しきれないため、こちらも別途チェックする。
+_STORE_NAME_LETTER_CHAR = re.compile(r"[぀-ゟ゠-ヿ一-鿿ｦ-ﾟ0-9A-Za-z]")
+# 数字を除いた「文字」。登録番号（T+数字等）にノイズの記号が混ざった行が
+# 上の2つのチェックをすり抜けることがあるため、店舗名には数字以外の文字が
+# 一定数含まれることを別途要求する（実在の店舗名は数字の羅列だけにはならない）。
+_STORE_NAME_NON_DIGIT_LETTER = re.compile(r"[぀-ゟ゠-ヿ一-鿿ｦ-ﾟA-Za-z]")
 
 
 @dataclass
@@ -88,13 +104,60 @@ def _parse_date(text: str) -> date | None:
     return None
 
 
+def _is_garbage_line(line: str) -> bool:
+    """
+    低解像度・ノイズの多い画像に対してTesseractがそれらしい文字（特にひらがな）を
+    強引に当てはめてしまう典型的な誤認識パターンを検出する。
+    実例:「ももそよすそそすするるるるるをすするすすするすもるするする1」のように、
+    少数の文字が高頻度で繰り返される。
+    """
+    core = re.sub(r"\s", "", line)
+    if len(core) < 6:
+        return False
+
+    most_common_count = Counter(core).most_common(1)[0][1]
+    if most_common_count / len(core) > 0.35:
+        return True
+
+    if len(set(core)) / len(core) < 0.35:
+        return True
+
+    return False
+
+
 def _is_store_name_candidate(line: str) -> bool:
     if len(line) < 2:
         return False
-    return not any(pattern.search(line) for pattern in _STORE_NAME_EXCLUDE_PATTERNS)
+    if any(pattern.search(line) for pattern in _STORE_NAME_EXCLUDE_PATTERNS):
+        return False
+
+    core = re.sub(r"\s", "", line)
+    if not core:
+        return False
+
+    unexpected_chars = _UNEXPECTED_STORE_NAME_CHAR.findall(core)
+    if len(unexpected_chars) / len(core) > 0.2:
+        return False
+
+    # 記号ばかりで「意味のある文字」がほとんど無い行（低画質時にTesseractが
+    # 記号の羅列を返すケース）を除外する。
+    letter_chars = _STORE_NAME_LETTER_CHAR.findall(core)
+    if len(letter_chars) / len(core) < 0.7:
+        return False
+
+    # 数字（登録番号等）にノイズの記号が混ざっただけの行を除外する。
+    if len(_STORE_NAME_NON_DIGIT_LETTER.findall(core)) < 2:
+        return False
+
+    return not _is_garbage_line(line)
 
 
-def _parse_store_name(text: str) -> str | None:
+def find_store_name_candidate(text: str) -> str | None:
+    """
+    テキストから店舗名候補を1行選ぶ（条件を満たす最初の行）。
+    レシート全文からのフォールバック抽出（parse_receipt_text）だけでなく、
+    店舗名領域だけを切り出した専用OCR（store_name.py）からも共通で使う。
+    """
     for line in text.splitlines():
         stripped = line.strip()
         if _is_store_name_candidate(stripped):
@@ -104,7 +167,7 @@ def _parse_store_name(text: str) -> str | None:
 
 def parse_receipt_text(text: str) -> ParsedReceipt:
     return ParsedReceipt(
-        store_name=_parse_store_name(text),
+        store_name=find_store_name_candidate(text),
         date=_parse_date(text),
         amount=_parse_amount(text),
     )
