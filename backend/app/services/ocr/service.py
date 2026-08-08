@@ -12,8 +12,8 @@ from app.services.ocr.parser import (
     find_amount_candidates,
     find_date_candidates,
     find_store_name_candidates,
-    is_plausible_store_name,
     parse_receipt_text,
+    store_name_quality_score,
 )
 from app.services.ocr.payment_method import (
     find_payment_method_candidate,
@@ -142,14 +142,18 @@ class OcrService:
                     store_name_region, lang=getattr(self.engine, "lang", settings.ocr_lang)
                 )
                 # 領域専用OCR候補を無条件に優先すると、全体OCR候補の方が明らかに妥当な場合でも
-                # 領域専用OCR側の誤認識（例:「NR ーー 「」）で上書きしてしまうことがあったため、
-                # どちらが「明らかに怪しくないか」を比較したうえで採用する。
-                #   - 領域専用OCR候補が妥当                          → 領域専用OCR候補を採用
-                #   - 領域専用OCR候補が非妥当、全体OCR候補が妥当       → 全体OCR候補を維持
-                #   - 領域専用OCR候補が非妥当、全体OCR候補も非妥当/無し → 従来通り領域専用OCR候補を採用
+                # 領域専用OCR側の誤認識（例:「還電SA い」）で上書きしてしまうことがあったため、
+                # どちらが「より店舗名らしいか」をスコアで比較したうえで採用する。
+                # store_name_quality_score は (想定外文字なしか, 有効文字数, -想定外文字数) の
+                # タプルを返し、同点の場合は領域専用OCR候補を優先する（>=）。これは、専用OCRの方が
+                # 精度が良いことが多いという従来の設計方針を、両者が同等に妥当な場合は維持するため。
+                #   - 全体OCR候補が無い                              → 領域専用OCR候補を採用
+                #   - 領域専用OCR候補のスコアが全体OCR候補以上         → 領域専用OCR候補を採用
+                #   - 領域専用OCR候補のスコアが全体OCR候補より低い     → 全体OCR候補を維持
                 if cropped_store_name and (
-                    is_plausible_store_name(cropped_store_name)
-                    or not (parsed.store_name and is_plausible_store_name(parsed.store_name))
+                    not parsed.store_name
+                    or store_name_quality_score(cropped_store_name)
+                    >= store_name_quality_score(parsed.store_name)
                 ):
                     store_name = cropped_store_name
                 logger.info(

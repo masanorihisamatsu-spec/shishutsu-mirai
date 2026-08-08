@@ -236,6 +236,30 @@ def is_plausible_store_name(candidate: str) -> bool:
     return True
 
 
+def store_name_quality_score(candidate: str) -> tuple[bool, int, int]:
+    """
+    候補の「店舗名らしさ」を比較可能な形で返す。is_plausible_store_name と同じ判定基準
+    （想定外文字の有無・有効文字数）を使うが、真偽値ではなく比較値にすることで、
+    全体OCR候補と店舗名専用OCR候補のどちらがより店舗名らしいかを比較できるようにする
+    （service.py の process_receipt での最終採用判定専用）。
+
+    is_plausible_store_name は「妥当かどうか」の二値判定のみで、例えば「還電SA い」
+    （想定外文字なし・有効文字数5）のように文字種としては正常だが意味を成さない短い
+    候補と、「東大阪長田東四丁目店」のような長く自然な候補を区別できない。
+    このスコアはその2つを長さで比較できるようにするためのもの。
+
+    find_store_name_candidate（1つの生テキスト内で複数行から候補を選ぶ処理）では
+    使わない。同一テキスト内で「後方にある無関係な長い行」が正しい先頭候補を
+    上書きしてしまう退行を過去に確認しているため、そちらは位置優先のロジックのまま
+    変更しない。ここでの比較は「既に選び抜かれた2つの最終候補（全体OCR vs 領域専用OCR）」
+    同士の比較に限定して使う。
+    """
+    core = re.sub(r"\s", "", candidate)
+    unexpected_count = len(_UNEXPECTED_STORE_NAME_CHAR.findall(core))
+    letter_count = len(_STORE_NAME_LETTER_CHAR.findall(core))
+    return (unexpected_count == 0, letter_count, -unexpected_count)
+
+
 def _collect_store_name_candidates(text: str) -> list[tuple[int, str]]:
     lines = text.splitlines()
     candidates: list[tuple[int, str]] = []
