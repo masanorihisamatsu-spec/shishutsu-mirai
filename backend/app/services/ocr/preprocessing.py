@@ -98,7 +98,7 @@ def preprocess_for_ocr(
     image: Image.Image,
     *,
     apply_denoise: bool = True,
-    apply_sharpen: bool = True,
+    apply_sharpen: bool = False,
     apply_binarize: bool = True,
 ) -> Image.Image:
     """
@@ -108,7 +108,12 @@ def preprocess_for_ocr(
     各ステップを引数で無効化できるようにしているのは、レシートのレイアウトや
     撮影条件によって二値化が逆効果になるケース（薄い印字が閾値で消える等）が
     あり得るため、backend/scripts/ocr_compare.py での比較検証を可能にする目的。
-    本番の既定値はすべて有効。
+
+    apply_sharpen は既定でFalse（本番の全体OCRはsharpenなし）。実物レシートで、
+    sharpen（UnsharpMask）が日付の「8」を「6」に誤認識させる原因であることを
+    実機診断で確認したため（denoise・contrastまでは正しく「8月」と認識できるが、
+    sharpenを加えた時点で「6月」に誤読される。binarizeの有無はこの誤読に無関係）。
+    denoise・contrast・binarizeは本番の挙動を維持するため既定で有効のまま。
     """
     processed = resize_for_ocr(image)
     processed = processed.convert("L")
