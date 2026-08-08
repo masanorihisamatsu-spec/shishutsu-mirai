@@ -72,6 +72,11 @@ export function TransactionForm(props: TransactionFormProps) {
 
   const categoryNames = useMemo(() => (categories ?? []).map((category) => category.name), [categories]);
 
+  const paymentMethodNames = useMemo(
+    () => (paymentMethods ?? []).map((method) => method.name),
+    [paymentMethods]
+  );
+
   const paymentMethodTileOptions = useMemo(
     () =>
       (paymentMethods ?? []).map((method) => ({
@@ -96,7 +101,9 @@ export function TransactionForm(props: TransactionFormProps) {
     if (!prefill) return;
     consumedOcrPrefillRef.current = prefill;
 
-    setValues((prev) => applyOcrResultToFormValues(prev, prefill, categoryNames));
+    setValues((prev) =>
+      applyOcrResultToFormValues(prev, prefill, categoryNames, paymentMethodNames)
+    );
     setReceiptImagePath(prefill.receipt_image);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -112,6 +119,15 @@ export function TransactionForm(props: TransactionFormProps) {
 
     setValues((prev) => (prev.category ? prev : { ...prev, category: guessed }));
   }, [categoryNames]);
+
+  // 支払方法一覧の取得が遅れて完了した場合に備え、まだ未選択なら再適用する（同上）
+  useEffect(() => {
+    const prefill = consumedOcrPrefillRef.current;
+    if (!prefill?.payment_method || !paymentMethodNames.includes(prefill.payment_method)) return;
+
+    const guessed = prefill.payment_method;
+    setValues((prev) => (prev.paymentMethod ? prev : { ...prev, paymentMethod: guessed }));
+  }, [paymentMethodNames]);
 
   const isSubmitting =
     mode === "create" ? createTransaction.isPending : updateTransaction.isPending;
@@ -133,7 +149,9 @@ export function TransactionForm(props: TransactionFormProps) {
 
     scanReceipt.mutate(file, {
       onSuccess: (result) => {
-        setValues((prev) => applyOcrResultToFormValues(prev, result, categoryNames));
+        setValues((prev) =>
+          applyOcrResultToFormValues(prev, result, categoryNames, paymentMethodNames)
+        );
         setReceiptImagePath(result.receipt_image);
       },
       onError: (error) => {

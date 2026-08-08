@@ -32,6 +32,7 @@ async def scan_receipt(
         store_name=result.store_name,
         date=result.date,
         amount=result.amount,
+        payment_method=result.payment_method,
         receipt_image=result.receipt_image,
         raw_text=result.raw_text,
     )

@@ -16,22 +16,34 @@ from dataclasses import dataclass
 from datetime import date
 
 # 「合計」を優先し、「小計」はあえて含めない（お預かり前の金額を誤って拾わないため）。
-# 駐車場の領収書等では「料金」「TOTAL」表記が使われることもあるため対応する。
+# 駐車場の領収書等では「料金」「TOTAL」表記が、コンビニ等では「ご利用額」「支払金額」
+# 「PayPay」（決済サービス名の直後に利用金額が印字される）表記が使われることもあるため対応する。
 # 金額の桁区切りカンマ「,」は感熱紙レシートの粗い印字だとTesseractがピリオド「.」と
 # 誤認識することが多い（実機テストで確認済み）ため、両方を許容してパース時に取り除く。
 _AMOUNT_LABEL_PATTERNS = [
     re.compile(
-        r"(?:合計|総額|ご請求額?|お会計|ご利用金額|お支払い?金額?|料金|TOTAL)[^\d]{0,10}([\d,.]{3,})",
+        r"(?:合計|総額|ご請求額?|お会計|ご利用金額|ご利用額|お支払い?金額?|支払金額|料金|TOTAL|PayPay)"
+        # レシートは金額を右寄せで印字することが多く、OCRテキスト上もラベルと金額の間に
+        # 大きめの空白が残ることがあるため、間隔の許容を広めに取る。
+        r"[^\d]{0,20}([\d,.]{3,})",
         re.IGNORECASE,
     ),
 ]
 _AMOUNT_FALLBACK_PATTERN = re.compile(r"[¥￥Y]\s*([\d,.]{3,})|([\d,.]{3,})\s*円")
 
+# 「2026年 8月 6日」のような漢字区切りの日付表記を最優先する（レシート上部の実際の
+# 取引日時に多い形式）。スラッシュ/ハイフン区切り（例:「2026/08/06」）は、ポイント有効期限等
+# レシート下部の無関係な日付表記でも使われがちなため、漢字区切りが1つも見つからない場合の
+# フォールバックとしてのみ使う。
 # 年・月・日の区切り文字の直後にOCRが余分な空白を挿入することがある
 # （例:「2026年 7月30日」）ため、区切り文字と数字の間の空白を許容する。
 _DATE_PATTERNS = [
-    re.compile(r"(20\d{2})[年/\-.]\s*(\d{1,2})[月/\-.]\s*(\d{1,2})"),
+    re.compile(r"(20\d{2})年\s*(\d{1,2})月\s*(\d{1,2})日"),
+    re.compile(r"(20\d{2})[/\-.]\s*(\d{1,2})[/\-.]\s*(\d{1,2})"),
 ]
+# 「(木) 15:12」のように曜日＋時刻が直後に続く日付候補は、取引日時である可能性が
+# 高いため最優先する（無関係な日付表記との区別に使う）。
+_DATE_TIME_CONTEXT_PATTERN = re.compile(r"^[\s\(（]*[月火水木金土日][\s\)）]*\d{1,2}:\d{2}")
 
 # 店舗名候補から除外する行のパターン群。店舗名そのものに市区町村名が含まれることも多い
 # （例:「エコパーキング上本町」）ため、住所らしさの判定は郵便番号・都道府県レベルに留める。
@@ -48,6 +60,8 @@ _STORE_NAME_EXCLUDE_PATTERNS = [
     re.compile(r"〒|(都|道|府|県)?[^\s]{2,6}(市|区|郡)[^\s]{0,10}(市|区|町|村)?"),  # 郵便番号・住所表記
     # 帳票タイトル（店舗名ではなく「これは領収書です」という書類種別を表すだけの語）
     re.compile(r"領収書|領収証|レシート|RECEIPT|明細書|明細|ありがとうございました|またお越しください", re.IGNORECASE),
+    re.compile(r"レジ|責任者|担当"),  # レジ番号・担当者表記（「レジ001」等。カタカナを含むため誤って優先されやすい）
+    re.compile(r"PayPay|楽天ペイ|楽天カード|JCB", re.IGNORECASE),  # 決済サービス名（支払方法欄。店舗名ではない）
 ]
 
 # 店舗名として想定される文字種（ひらがな・カタカナ・漢字・英数字・記号少々）。
@@ -72,6 +86,12 @@ _STORE_NAME_CANDIDATE_SCAN_LIMIT = 8
 # カタカナ優先を適用するのは上位の候補に限る（離れた場所にある無関係な行が
 # たまたまカタカナを含んでいた場合に、正しい先頭候補を上書きしないようにするため）。
 _STORE_NAME_KATAKANA_PREFERENCE_WINDOW = 3
+# 「LAWSON」「ローソン」のようにチェーン名（ブランド名）だけの短い行の直後に
+# 支店名の行が続くレシートがあるため、その場合は2行をまとめて店舗名とする。
+# 誤爆を避けるため、英字のみ／カタカナのみの短い行（＝住所等の情報を含まない
+# 「ブランド名らしい」行）に限定する。
+_STORE_NAME_BRAND_ONLY_LINE = re.compile(r"^[A-Za-z\-]+$|^[゠-ヿｦ-ﾟ]+$")
+_STORE_NAME_BRAND_LINE_MAX_LENGTH = 10
 
 
 @dataclass
@@ -85,6 +105,18 @@ def _clean_amount_digits(raw: str) -> str:
     # 桁区切り「,」だけでなく、OCRがそれを誤認識した「.」も区切り文字として取り除く。
     # 末尾の「.-」（＝「◯◯円ちょうど」を表す表記）が付く場合も同様にここで落ちる。
     return raw.replace(",", "").replace(".", "")
+
+
+def find_amount_candidates(text: str) -> list[str]:
+    """
+    テキスト中で「ラベル + 金額」として見つかった候補（見つかった順、マッチした文字列そのもの）
+    の一覧を返す。診断ログ用。実際の採用ロジックは _parse_amount 側（最初に見つかったラベル
+    付き候補を最優先し、無ければ円/¥表記の最大値にフォールバック）を参照。
+    """
+    candidates: list[str] = []
+    for pattern in _AMOUNT_LABEL_PATTERNS:
+        candidates.extend(match.group(0) for match in pattern.finditer(text))
+    return candidates
 
 
 def _parse_amount(text: str) -> int | None:
@@ -104,15 +136,39 @@ def _parse_amount(text: str) -> int | None:
     return max(candidates) if candidates else None
 
 
-def _parse_date(text: str) -> date | None:
+def find_date_candidates(text: str) -> list[str]:
+    """テキスト中で日付として認識された候補文字列（見つかった順）の一覧を返す。診断ログ用。"""
+    candidates: list[str] = []
     for pattern in _DATE_PATTERNS:
-        match = pattern.search(text)
-        if match:
-            year, month, day = (int(value) for value in match.groups())
-            try:
-                return date(year, month, day)
-            except ValueError:
-                continue
+        candidates.extend(match.group(0) for match in pattern.finditer(text))
+    return candidates
+
+
+def _parse_date(text: str) -> date | None:
+    matches: list[re.Match[str]] = []
+    for pattern in _DATE_PATTERNS:
+        matches = list(pattern.finditer(text))
+        if matches:
+            # 漢字区切りの候補が1つでも見つかったら、スラッシュ/ハイフン区切りのパターンは見ない
+            # （漢字区切りの方が実際の取引日時である可能性が高いため）。
+            break
+
+    if not matches:
+        return None
+
+    def has_time_context(match: re.Match[str]) -> bool:
+        trailing = text[match.end() : match.end() + 12]
+        return bool(_DATE_TIME_CONTEXT_PATTERN.search(trailing))
+
+    # 曜日+時刻が直後に続く候補を最優先し、その中ではテキスト中で最初に出てくるものを採用する。
+    matches.sort(key=lambda m: (not has_time_context(m), m.start()))
+
+    for match in matches:
+        year, month, day = (int(value) for value in match.groups())
+        try:
+            return date(year, month, day)
+        except ValueError:
+            continue
     return None
 
 
@@ -165,6 +221,23 @@ def _is_store_name_candidate(line: str) -> bool:
     return not _is_garbage_line(line)
 
 
+def _collect_store_name_candidates(text: str) -> list[tuple[int, str]]:
+    lines = text.splitlines()
+    candidates: list[tuple[int, str]] = []
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if _is_store_name_candidate(stripped):
+            candidates.append((index, stripped))
+            if len(candidates) >= _STORE_NAME_CANDIDATE_SCAN_LIMIT:
+                break
+    return candidates
+
+
+def find_store_name_candidates(text: str) -> list[str]:
+    """テキスト中で店舗名候補となった行（見つかった順）の一覧を返す。診断ログ用。"""
+    return [candidate for _, candidate in _collect_store_name_candidates(text)]
+
+
 def find_store_name_candidate(text: str) -> str | None:
     """
     テキストから店舗名候補を選ぶ。
@@ -175,23 +248,31 @@ def find_store_name_candidate(text: str) -> str | None:
       1. レシート上部（先頭）に近い行を優先する（先頭からスキャンし、一定数見つかった時点で打ち切る）
       2. その中でカタカナを含む行があれば優先する（店名はカタカナを含む固有名詞であることが多いため）
       3. 住所・電話番号・帳票タイトル（「領収書」等）・金額行は _is_store_name_candidate 側で除外済み
-    """
-    candidates: list[str] = []
-    for line in text.splitlines():
-        stripped = line.strip()
-        if _is_store_name_candidate(stripped):
-            candidates.append(stripped)
-            if len(candidates) >= _STORE_NAME_CANDIDATE_SCAN_LIMIT:
-                break
 
+    さらに、採用した行が「LAWSON」のようなブランド名だけの短い行で、かつ直後の行も
+    店舗名候補として有効な場合（例:「東大阪長田東四丁目店」）は、2行をまとめて返す。
+    """
+    lines = text.splitlines()
+    candidates = _collect_store_name_candidates(text)
     if not candidates:
         return None
 
-    for candidate in candidates[:_STORE_NAME_KATAKANA_PREFERENCE_WINDOW]:
+    chosen_index, chosen = candidates[0]
+    for index, candidate in candidates[:_STORE_NAME_KATAKANA_PREFERENCE_WINDOW]:
         if _KATAKANA_CHAR.search(candidate):
-            return candidate
+            chosen_index, chosen = index, candidate
+            break
 
-    return candidates[0]
+    if (
+        len(chosen) <= _STORE_NAME_BRAND_LINE_MAX_LENGTH
+        and _STORE_NAME_BRAND_ONLY_LINE.match(chosen)
+        and chosen_index + 1 < len(lines)
+    ):
+        next_line = lines[chosen_index + 1].strip()
+        if next_line != chosen and _is_store_name_candidate(next_line):
+            return f"{chosen} {next_line}"
+
+    return chosen
 
 
 def parse_receipt_text(text: str) -> ParsedReceipt:

@@ -8,7 +8,16 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 
 from app.core.config import settings
 from app.services.ocr.engine import OcrEngine, TesseractOcrEngine
-from app.services.ocr.parser import parse_receipt_text
+from app.services.ocr.parser import (
+    find_amount_candidates,
+    find_date_candidates,
+    find_store_name_candidates,
+    parse_receipt_text,
+)
+from app.services.ocr.payment_method import (
+    find_payment_method_candidate,
+    find_payment_method_candidates,
+)
 from app.services.ocr.preprocessing import preprocess_for_ocr
 from app.services.ocr.store_name import crop_store_name_region, extract_store_name
 
@@ -25,12 +34,14 @@ class OcrResult:
         store_name: str | None,
         transaction_date: date | None,
         amount: int | None,
+        payment_method: str | None,
         receipt_image: str,
         raw_text: str,
     ) -> None:
         self.store_name = store_name
         self.date = transaction_date
         self.amount = amount
+        self.payment_method = payment_method
         self.receipt_image = receipt_image
         self.raw_text = raw_text
 
@@ -74,21 +85,51 @@ class OcrService:
                     self._save_debug_preprocessed_image(ocr_ready_image, receipt_image_path)
 
                 raw_text = self.engine.extract_text(ocr_ready_image)
-                if settings.ocr_debug_save_preprocessed:
-                    logger.info(
-                        "OCR認識結果（filename=%s, lang=%s, psm=%s）: %r",
-                        filename,
-                        getattr(self.engine, "lang", "?"),
-                        getattr(self.engine, "psm", "?"),
-                        raw_text,
-                    )
             except Exception as exc:  # noqa: BLE001 - 前処理/OCR実行起因の例外を一律ドメイン例外に変換する
                 logger.exception(
                     "OCR処理に失敗しました（filename=%s, size=%s）", filename, upright_image.size
                 )
                 raise OcrProcessingError("OCR処理に失敗しました") from exc
 
+            # 生OCR結果と、各項目の候補一覧・最終採用値を必ずログに残す（診断用）。
+            # カテゴリは店舗名に加えてユーザーが実際に登録しているカテゴリ一覧を参照して
+            # 推定するため、そのデータを持たないバックエンドではなくフロントエンド側でログする
+            # （frontend/src/services/ocr/mapper.ts を参照）。
+            logger.info(
+                "OCR生テキスト（filename=%s, lang=%s, psm=%s）: %r",
+                filename,
+                getattr(self.engine, "lang", "?"),
+                getattr(self.engine, "psm", "?"),
+                raw_text,
+            )
+
             parsed = parse_receipt_text(raw_text)
+            payment_method = find_payment_method_candidate(raw_text)
+
+            logger.info(
+                "日付抽出（filename=%s）: 候補一覧=%s 採用=%s",
+                filename,
+                find_date_candidates(raw_text),
+                parsed.date,
+            )
+            logger.info(
+                "金額抽出（filename=%s）: 候補一覧=%s 採用=%s",
+                filename,
+                find_amount_candidates(raw_text),
+                parsed.amount,
+            )
+            logger.info(
+                "支払方法抽出（filename=%s）: 候補一覧=%s 採用=%s",
+                filename,
+                find_payment_method_candidates(raw_text),
+                payment_method,
+            )
+            logger.info(
+                "店舗名抽出_全体OCR（filename=%s）: 候補一覧=%s 採用=%s",
+                filename,
+                find_store_name_candidates(raw_text),
+                parsed.store_name,
+            )
 
             # 店舗名はレシート上部だけを切り出して専用のOCRを追加で試みた方が精度が良いことが
             # 多いため、ここで別途試す。失敗しても金額・日付（parsedとして確定済み）や
@@ -124,6 +165,7 @@ class OcrService:
             store_name=store_name,
             transaction_date=parsed.date,
             amount=parsed.amount,
+            payment_method=payment_method,
             receipt_image=receipt_image_path,
             raw_text=raw_text,
         )

@@ -13,6 +13,7 @@ const CATEGORY_KEYWORD_RULES: { category: string; keywords: string[] }[] = [
       "セブンイレブン",
       "ファミリーマート",
       "ローソン",
+      "LAWSON",
       "スターバックス",
       "マクドナルド",
     ],

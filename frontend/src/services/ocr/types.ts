@@ -6,6 +6,7 @@ export interface OcrReceiptResult {
   store_name: string | null;
   date: string | null;
   amount: number | null;
+  payment_method: string | null;
   receipt_image: string;
   raw_text: string;
 }
