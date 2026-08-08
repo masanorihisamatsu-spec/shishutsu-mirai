@@ -12,6 +12,7 @@ from app.services.ocr.parser import (
     find_amount_candidates,
     find_date_candidates,
     find_store_name_candidates,
+    is_plausible_store_name,
     parse_receipt_text,
 )
 from app.services.ocr.payment_method import (
@@ -140,7 +141,16 @@ class OcrService:
                 cropped_store_name = extract_store_name(
                     store_name_region, lang=getattr(self.engine, "lang", settings.ocr_lang)
                 )
-                if cropped_store_name:
+                # 領域専用OCR候補を無条件に優先すると、全体OCR候補の方が明らかに妥当な場合でも
+                # 領域専用OCR側の誤認識（例:「NR ーー 「」）で上書きしてしまうことがあったため、
+                # どちらが「明らかに怪しくないか」を比較したうえで採用する。
+                #   - 領域専用OCR候補が妥当                          → 領域専用OCR候補を採用
+                #   - 領域専用OCR候補が非妥当、全体OCR候補が妥当       → 全体OCR候補を維持
+                #   - 領域専用OCR候補が非妥当、全体OCR候補も非妥当/無し → 従来通り領域専用OCR候補を採用
+                if cropped_store_name and (
+                    is_plausible_store_name(cropped_store_name)
+                    or not (parsed.store_name and is_plausible_store_name(parsed.store_name))
+                ):
                     store_name = cropped_store_name
                 logger.info(
                     "店舗名抽出結果（filename=%s）: 全体OCR候補=%r 領域専用OCR候補=%r 採用=%r",

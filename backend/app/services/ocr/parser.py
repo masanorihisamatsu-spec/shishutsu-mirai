@@ -78,14 +78,12 @@ _STORE_NAME_LETTER_CHAR = re.compile(r"[぀-ゟ゠-ヿ一-鿿ｦ-ﾟ0-9A-Za-z]")
 # 上の2つのチェックをすり抜けることがあるため、店舗名には数字以外の文字が
 # 一定数含まれることを別途要求する（実在の店舗名は数字の羅列だけにはならない）。
 _STORE_NAME_NON_DIGIT_LETTER = re.compile(r"[぀-ゟ゠-ヿ一-鿿ｦ-ﾟA-Za-z]")
-# 店名（チェーン名等）はカタカナを含む固有名詞であることが多いため、
-# 複数の候補行がある場合はカタカナを含む行を優先する。
-_KATAKANA_CHAR = re.compile(r"[゠-ヿｦ-ﾟ]")
 # レシート上部だけを見れば十分なため、候補として集める行数の上限。
 _STORE_NAME_CANDIDATE_SCAN_LIMIT = 8
-# カタカナ優先を適用するのは上位の候補に限る（離れた場所にある無関係な行が
-# たまたまカタカナを含んでいた場合に、正しい先頭候補を上書きしないようにするため）。
-_STORE_NAME_KATAKANA_PREFERENCE_WINDOW = 3
+# 「妥当な候補」と判定するための、有効文字数の下限。
+# 「あい」のような短いOCRノイズの断片（_is_store_name_candidate自体は通過してしまう）を
+# 「明らかに怪しい」側に倒すための閾値。
+_STORE_NAME_MIN_PLAUSIBLE_LETTERS = 3
 # 「LAWSON」「ローソン」のようにチェーン名（ブランド名）だけの短い行の直後に
 # 支店名の行が続くレシートがあるため、その場合は2行をまとめて店舗名とする。
 # 誤爆を避けるため、英字のみ／カタカナのみの短い行（＝住所等の情報を含まない
@@ -221,6 +219,23 @@ def _is_store_name_candidate(line: str) -> bool:
     return not _is_garbage_line(line)
 
 
+def is_plausible_store_name(candidate: str) -> bool:
+    """
+    _is_store_name_candidate よりも厳しい基準で「明らかに怪しくない」候補かどうかを判定する。
+    _is_store_name_candidate の異常文字チェックは比率ベース（20%以下ならOK）で緩いため、
+    「` LAVVBロR」のような1文字だけ異常文字が混ざった誤認識候補を通してしまう。
+    ここでは異常文字を1文字も許容しない、より厳格な基準にする。
+    また「あい」のような短い断片（_STORE_NAME_NON_DIGIT_LETTER の下限2文字は満たすが
+    店舗名としては短すぎる）を弾くため、有効文字数の下限も引き上げる。
+    """
+    core = re.sub(r"\s", "", candidate)
+    if _UNEXPECTED_STORE_NAME_CHAR.search(core):
+        return False
+    if len(_STORE_NAME_LETTER_CHAR.findall(core)) < _STORE_NAME_MIN_PLAUSIBLE_LETTERS:
+        return False
+    return True
+
+
 def _collect_store_name_candidates(text: str) -> list[tuple[int, str]]:
     lines = text.splitlines()
     candidates: list[tuple[int, str]] = []
@@ -246,7 +261,9 @@ def find_store_name_candidate(text: str) -> str | None:
 
     優先順位:
       1. レシート上部（先頭）に近い行を優先する（先頭からスキャンし、一定数見つかった時点で打ち切る）
-      2. その中でカタカナを含む行があれば優先する（店名はカタカナを含む固有名詞であることが多いため）
+      2. その中で is_plausible_store_name を満たす（＝明らかに怪しくない）最初の候補を採用する。
+         「明らかに怪しい」候補（異常文字を含む、または短すぎる断片）は読み飛ばす。
+         全候補が怪しい場合は、従来通り先頭の候補にフォールバックする。
       3. 住所・電話番号・帳票タイトル（「領収書」等）・金額行は _is_store_name_candidate 側で除外済み
 
     さらに、採用した行が「LAWSON」のようなブランド名だけの短い行で、かつ直後の行も
@@ -258,8 +275,8 @@ def find_store_name_candidate(text: str) -> str | None:
         return None
 
     chosen_index, chosen = candidates[0]
-    for index, candidate in candidates[:_STORE_NAME_KATAKANA_PREFERENCE_WINDOW]:
-        if _KATAKANA_CHAR.search(candidate):
+    for index, candidate in candidates:
+        if is_plausible_store_name(candidate):
             chosen_index, chosen = index, candidate
             break
 
